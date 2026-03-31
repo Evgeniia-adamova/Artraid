@@ -236,7 +236,8 @@ def plot_heatmap(cohort_pivot: pd.DataFrame, output_path: Path) -> None:
 
 
 def plot_curves(cohort_pivot: pd.DataFrame, selected_cohorts: list[pd.Timestamp], output_path: Path) -> pd.Series:
-    avg_curve = cohort_pivot.mean(axis=0, skipna=True)
+    mature_mask = cohort_pivot.notna().all(axis=1)
+    avg_curve = cohort_pivot.loc[mature_mask].mean(axis=0, skipna=True) if mature_mask.any() else cohort_pivot.mean(axis=0, skipna=True)
     
     # Разделяем когорты на ранние и поздние
     midpoint = len(selected_cohorts) // 2
@@ -314,7 +315,7 @@ def plot_final_buyout(summary: pd.DataFrame, output_path: Path, title: str) -> p
 
     plt.figure(figsize=(14, 6.5))
     plt.bar(labels, mature_df["buyout_pct"], color=colors)
-    plt.axhline(mature_df["buyout_pct"].mean(), color="black", linestyle="--", linewidth=1.5)
+    plt.axhline(mature_df["buyout_pct"].mean(), color="black", linestyle="--", linewidth=1.5, label=f"Среднее: {mature_df['buyout_pct'].mean():.1f}%")
     plt.title(title)
     plt.xlabel("Cohort")
     plt.ylabel(f"Buyout rate by D{MAX_DAY}, %")
@@ -375,8 +376,9 @@ def build_summary_report(
     trend_note = "Недостаточно зрелых когорт для оценки тренда."
     trend_delta_pp = np.nan
     if len(mature_weekly) >= 8:
-        recent = mature_weekly.tail(8)[f"buyout_rate_day_{MAX_DAY}"]
-        previous = mature_weekly.iloc[-16:-8][f"buyout_rate_day_{MAX_DAY}"]
+        half = len(mature_weekly) // 2
+        recent = mature_weekly.tail(min(8, half))[f"buyout_rate_day_{MAX_DAY}"]
+        previous = mature_weekly.head(min(8, half))[f"buyout_rate_day_{MAX_DAY}"]
         if len(previous) >= 4:
             trend_delta_pp = (recent.mean() - previous.mean()) * 100
             if trend_delta_pp >= 2:
@@ -399,55 +401,55 @@ def build_summary_report(
     bottom_weekly = mature_weekly.nsmallest(5, f"buyout_rate_day_{MAX_DAY}")
 
     lines = [
-        "# Cohort Buyout Analysis",
+        "# Когортный анализ выкупа",
         "",
-        "## 1) Dataset overview",
+        "## 1) Обзор датасета",
         "",
-        f"- Input file: `{INPUT_PATH}`",
-        f"- Rows before filtering: **{fmt_int(meta['rows_before'])}**",
-        f"- Excluded `outcome_unknown=True`: **{fmt_int(meta['excluded_outcome_unknown'])}**",
-        f"- Dropped rows with empty `sale_date`: **{fmt_int(meta['dropped_missing_sale_date'])}**",
-        f"- Duplicates removed by key `{meta['business_key']}`: **{fmt_int(meta['duplicates_removed'])}**",
-        f"- Rows after cleaning: **{fmt_int(meta['rows_after_dedup'])}**",
-        f"- Weekly cohorts: **{fmt_int(meta['weekly_cohorts'])}**",
-        f"- Monthly cohorts: **{fmt_int(meta['monthly_cohorts'])}**",
-        f"- Buyouts with confirmed `received_ts`: **{fmt_int(meta['buyout_orders'])}**",
-        f"- `buyout_flag=True` total: **{fmt_int(meta['buyout_flag_true'])}**",
-        f"- Sale date range: **{meta['sale_date_min']} → {meta['sale_date_max']}**",
-        f"- Observed cutoff date: **{meta['observed_cutoff']}**",
+        f"- Входной файл: `{INPUT_PATH}`",
+        f"- Строк до фильтрации: **{fmt_int(meta['rows_before'])}**",
+        f"- Исключено `outcome_unknown=True`: **{fmt_int(meta['excluded_outcome_unknown'])}**",
+        f"- Удалено строк без `sale_date`: **{fmt_int(meta['dropped_missing_sale_date'])}**",
+        f"- Удалено дубликатов по ключу `{meta['business_key']}`: **{fmt_int(meta['duplicates_removed'])}**",
+        f"- Строк после очистки: **{fmt_int(meta['rows_after_dedup'])}**",
+        f"- Недельных когорт: **{fmt_int(meta['weekly_cohorts'])}**",
+        f"- Месячных когорт: **{fmt_int(meta['monthly_cohorts'])}**",
+        f"- Выкупов с подтвержденным `received_ts`: **{fmt_int(meta['buyout_orders'])}**",
+        f"- Всего `buyout_flag=True`: **{fmt_int(meta['buyout_flag_true'])}**",
+        f"- Диапазон дат продаж: **{meta['sale_date_min']} → {meta['sale_date_max']}**",
+        f"- Дата отсечки наблюдения: **{meta['observed_cutoff']}**",
         "",
-        "## 2) Method",
+        "## 2) Методология",
         "",
         "- Когорты построены по `sale_date` с агрегацией по неделям.",
         "- Для выкупа используется `received_ts`.",
-        "- Для невыкупа используется earliest of `rejected_ts` / `returned_ts`.",
+        "- Для невыкупа используется наиболее ранняя из `rejected_ts` / `returned_ts`.",
         "- Метрика `buyout_rate_cum` считается с поправкой на зрелость когорты: в знаменателе только заказы, которые уже могли быть наблюдаемы на день D.",
         "",
-        "## 3) Key findings",
+        "## 3) Ключевые выводы",
         "",
         f"1. Основной рост выкупа приходится на **{peak_increment_day}-й день** после заказа.",
         f"2. Около 80% финального выкупа набирается к **{day_80}-му дню**, а плато (~95%) достигается к **{day_95}-му дню**.",
-        f"3. Средний cumulative buyout к D{MAX_DAY}: **{fmt_pct(final_avg_rate)}**.",
+        f"3. Средний накопительный выкуп к D{MAX_DAY}: **{fmt_pct(final_avg_rate)}**.",
         f"4. {trend_note}",
         f"5. {monthly_note}",
         "",
-        "## 4) Best and weakest mature weekly cohorts",
+        "## 4) Лучшие и слабейшие зрелые недельные когорты",
         "",
-        "### Top cohorts",
+        "### Лучшие когорты",
         "",
         render_rank_table(top_weekly, f"buyout_rate_day_{MAX_DAY}", n=5),
         "",
-        "### Bottom cohorts",
+        "### Слабейшие когорты",
         "",
         render_rank_table(bottom_weekly, f"buyout_rate_day_{MAX_DAY}", n=5),
         "",
-        "## 5) Useful interpretation",
+        "## 5) Интерпретация",
         "",
-        f"- The strongest uplift is concentrated in the first **{day_95} days**.",
-        f"- After D{MAX_DAY}, the curve is close to its mature level.",
-        f"- A noticeable spread between cohorts suggests that delivery / region / manager effects are worth checking in the next stage.",
+        f"- Основной прирост выкупа сконцентрирован в первые **{day_95} дней**.",
+        f"- После D{MAX_DAY} кривая выходит на зрелый уровень.",
+        f"- Заметный разброс между когортами указывает на то, что на следующем этапе стоит проверить влияние доставки, региона и менеджера.",
         "",
-        "## 6) Files produced",
+        "## 6) Сформированные файлы",
         "",
         "- `cohort_metrics_weekly.csv`",
         "- `cohort_summary_weekly.csv`",
@@ -459,6 +461,7 @@ def build_summary_report(
         "- `final_buyout_rate_weekly.png`",
         "- `final_buyout_rate_monthly.png`",
     ]
+
     return "\n".join(lines)
 
 def main() -> None:
@@ -499,7 +502,7 @@ def main() -> None:
         OUTPUT_DIR / "cohort_summary_weekly.csv",
         OUTPUT_DIR / "cohort_summary_monthly.csv",
         OUTPUT_DIR / "cohort_heatmap_table_weekly.csv",
-        OUTPUT_DIR / "summary.txt",
+        OUTPUT_DIR / "summary.md",
         CHARTS_DIR / "cohort_heatmap_weekly_d30.png",
         CHARTS_DIR / "cohort_curves_weekly_selected.png",
         CHARTS_DIR / "cohort_sizes_weekly.png",

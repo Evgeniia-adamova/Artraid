@@ -223,7 +223,10 @@ new_df_trimmed = new_df_trimmed.dropna(how='all')
 after_empty = len(new_df_trimmed)
 print(f'Удалено пустых строк: {rows_before - after_empty}')
 
-new_df_trimmed = new_df_trimmed.drop_duplicates()
+if 'lead_id' in new_df_trimmed.columns:
+    new_df_trimmed = new_df_trimmed.drop_duplicates(subset=['lead_id'], keep='first')
+else:
+    new_df_trimmed = new_df_trimmed.drop_duplicates()
 after_dupes = len(new_df_trimmed)
 print(f'Удалено дубликатов: {after_empty - after_dupes}')
 
