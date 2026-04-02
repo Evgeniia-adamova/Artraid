@@ -1,0 +1,98 @@
+# Конфигурация целевых типов данных
+# Столбцы, которых нет в датасете, будут пропущены автоматически
+
+# Список столбцов для загрузки (use_cols)
+use_cols:
+  - outcome_unknown   # только для фильтрации строк.
+  - lead_Источник
+  - lead_yclid
+  - lead_tags
+  - lead_Тариф Доставки
+  - contact_Город
+  - lead_Служба доставки
+  - returned_ts
+  - rejected_ts
+  - lead_Скидка
+  - lead_Условный отказ
+  - lead_Оплата МОП
+  - lead_Дата создания сделки
+  - lead_Дата перехода в Сборку
+  - lead_Дата получения денег на Р/С
+  - lead_Квалификация лида
+  - contact_LTV
+  - contact_Число сделок
+  - received_ts
+  - issued_or_pvz_ts
+  - closed_ts
+  - days_to_outcome
+  - buyout_flag
+  - handed_to_delivery_ts
+  - lead_Проблема
+  - lead_Вид оплаты
+  - lead_Состав заказа
+  - contact_id
+  - sale_ts
+  - sale_date
+  - lead_price
+  - lead_id
+  - lead_responsible_user_id
+
+# Приведение типов
+
+# str → category
+str_to_category:
+  - lead_Источник
+  - lead_Тариф Доставки
+  - lead_Служба доставки
+  - lead_Условный отказ
+  - lead_Квалификация лида
+  - lead_Проблема
+  - lead_Вид оплаты
+
+str_to_float:
+  - lead_Стоимость доставки
+
+# float64 → datetime64[ns]
+float_to_datetime:
+  - returned_ts
+  - rejected_ts
+  - received_ts
+  - issued_or_pvz_ts
+  - closed_ts
+  - handed_to_delivery_ts
+  - lead_Дата создания сделки
+  - lead_Дата перехода в Сборку
+  - lead_Дата получения денег на Р/С
+
+# int64 → datetime64[ns]
+int_to_datetime:
+  - sale_ts
+
+# str → datetime64[ns]
+str_to_datetime:
+  - sale_date
+
+# object → Int64 (nullable integer: 1/0/NaN)
+object_to_int:
+  - buyout_flag
+
+# Столбцы с подходящим исходным типом данных (не конвертируем)
+#
+# str остается исходный тип:
+#   - lead_yclid          (используется только для создания флага has_yclid)
+#   - lead_tags           (используется только для создания флага has_promo)
+#   - lead_Оплата МОП     (используется только для создания флага is_paid_mop)
+#   - lead_Состав заказа  (используется для извлечения product_category)
+#   - contact_Город       (используется для создания region)
+#   - contact_id
+#   - lead_id
+#   - lead_responsible_user_id
+#
+# float64 остается исходный тип:
+#   - lead_Скидка
+#   - contact_LTV
+#   - contact_Число сделок
+#   - days_to_outcome
+#
+# int64 остается исходный тип:
+#   - lead_price
