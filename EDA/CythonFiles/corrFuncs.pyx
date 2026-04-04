@@ -41,7 +41,9 @@ cdef:
     float64_t FP_ERR = 1e-13
     float64_t NaN = <float64_t>np.nan
 
-def nancorr_CramersV_fast(const int64_t[:, :] mat, bint bias_correction=True, minp=None):
+from scipy.stats import chi2_contingency
+
+cpdef nancorr_CramersV_fast(const int64_t[:, :] mat, bint bias_correction=True, minp=None):
     cdef:
         Py_ssize_t i, xi, yi, N, K
         int64_t minpv
@@ -110,7 +112,6 @@ def nancorr_CramersV_fast(const int64_t[:, :] mat, bint bias_correction=True, mi
                 result[xi, yi] = result[yi, xi] = np.nan
                 continue
 
-            chi2 = 0.0
             total = float(nobs)
             r = 0
             k = 0
@@ -120,8 +121,9 @@ def nancorr_CramersV_fast(const int64_t[:, :] mat, bint bias_correction=True, mi
                     r += 1
                 if col_sums[i] > 0:
                     k += 1
+            chi2 = chi2_contingency(contingency[:r, :k], correction = bias_correction)[0]
 
-            for i in range(max_categories):
+            '''for i in range(max_categories):
                 if row_sums[i] == 0:
                     continue
                 for j in range(max_categories):
@@ -130,7 +132,7 @@ def nancorr_CramersV_fast(const int64_t[:, :] mat, bint bias_correction=True, mi
                     observed = contingency[i, j]
                     if observed > 0:
                         expected = (row_sums[i] * col_sums[j]) / total
-                        chi2 += (observed - expected) ** 2 / expected
+                        chi2 += (observed - expected) ** 2 / expected'''
 
             min_dim = min(r, k) - 1
 
@@ -141,9 +143,9 @@ def nancorr_CramersV_fast(const int64_t[:, :] mat, bint bias_correction=True, mi
             phi2 = chi2 / total
             cramers_v = sqrt(phi2 / min_dim)
 
-            if bias_correction:
+            '''if bias_correction:
                 correction = (r - 1) * (k - 1) / max(1.0, total - 1)
-                cramers_v = max(0.0, min(1.0, cramers_v - correction))
+                cramers_v = max(0.0, min(1.0, cramers_v - correction))'''
 
             if cramers_v < 0.0:
                 cramers_v = 0.0
