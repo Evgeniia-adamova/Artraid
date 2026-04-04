@@ -16,14 +16,13 @@ LINE_COHORTS_PER_SIDE = 4
 KEY_DAYS = (7, 14, 30)
 
 BASE_DIR = Path(__file__).resolve().parent
-INPUT_PATH = BASE_DIR.parent / "data_preparation" / "data" / "clean" / "clean_data_trimmed.xlsx"
+INPUT_PATH = BASE_DIR.parent / "data_preparation" / "data" / "clean" / "clean_data.xlsx"
 OUTPUT_DIR = BASE_DIR / "outputs"
 CHARTS_DIR = OUTPUT_DIR / "charts"
 
 REQUIRED_COLUMNS = [
     "sale_date",
     "buyout_flag",
-    "outcome_unknown",
     "received_ts",
     "rejected_ts",
     "returned_ts",
@@ -74,9 +73,7 @@ def load_and_prepare_data(path: Path) -> tuple[pd.DataFrame, dict[str, object]]:
     df["sale_date"] = df["sale_date"].dt.floor("D")
 
     rows_before = len(df)
-    unknown_mask = to_truthy_mask(df["outcome_unknown"])
-    df = df.loc[~unknown_mask].copy()
-    rows_after_unknown = len(df)
+    rows_after_unknown = rows_before  # outcome_unknown уже отфильтрован в data_preparation
 
     df = df.loc[df["sale_date"].notna()].copy()
     rows_after_sale_date = len(df)
