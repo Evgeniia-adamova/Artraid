@@ -72,4 +72,4 @@ if 'outcome_unknown' in df.columns:
 
 # Сохранение
 df.to_excel('data/clean/clean_data.xlsx', index=False, engine='openpyxl')
-print(f'Excel сохранён: clean_data.xlsx')
+print(f'Сохранено: clean_data.xlsx — {len(df)} строк, {df.shape[1]} столбцов')

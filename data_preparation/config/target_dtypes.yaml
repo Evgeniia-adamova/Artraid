@@ -49,8 +49,7 @@ str_to_category:
   - lead_Проблема
   - lead_Вид оплаты
 
-str_to_float:
-  - lead_Стоимость доставки
+str_to_float: []
 
 # float64 → datetime64[ns]
 float_to_datetime:
