@@ -448,10 +448,11 @@ def build_summary_report(
         "",
         "## 6) Сформированные файлы",
         "",
-        "- `cohort_metrics_weekly.csv`",
-        "- `cohort_summary_weekly.csv`",
-        "- `cohort_summary_monthly.csv`",
-        "- `cohort_heatmap_table_weekly.csv`",
+        "- `cohort_analysis_data.xlsx` (один файл с 4 листами):",
+        "  - Лист 1: Метрики по неделям",
+        "  - Лист 2: Итоги по неделям",
+        "  - Лист 3: Итоги по месяцам",
+        "  - Лист 4: Накопительный выкуп",
         "- `cohort_heatmap_weekly_d30.png`",
         "- `cohort_curves_weekly_selected.png`",
         "- `cohort_sizes_weekly.png`",
@@ -484,10 +485,12 @@ def main() -> None:
     plot_final_buyout(weekly_summary, CHARTS_DIR / "final_buyout_rate_weekly.png", f"Финальный buyout rate по недельным когортам (D{MAX_DAY}, только зрелые когорты)")
     plot_final_buyout(monthly_summary, CHARTS_DIR / "final_buyout_rate_monthly.png", f"Обзорный месячный buyout rate (D{MAX_DAY}, только зрелые когорты)")
 
-    weekly_long.to_csv(OUTPUT_DIR / "cohort_metrics_weekly.csv", index=False, float_format="%.6f")
-    weekly_summary.to_csv(OUTPUT_DIR / "cohort_summary_weekly.csv", float_format="%.6f")
-    monthly_summary.to_csv(OUTPUT_DIR / "cohort_summary_monthly.csv", float_format="%.6f")
-    weekly_pivot.to_csv(OUTPUT_DIR / "cohort_heatmap_table_weekly.csv", float_format="%.6f")
+    # Сохраняем все таблицы в один Excel файл с несколькими листами
+    with pd.ExcelWriter(OUTPUT_DIR / "cohort_analysis_data.xlsx", engine="openpyxl") as writer:
+        weekly_long.to_excel(writer, sheet_name="Метрики по неделям", index=False, float_format="%.6f")
+        weekly_summary.to_excel(writer, sheet_name="Итоги по неделям", float_format="%.6f")
+        monthly_summary.to_excel(writer, sheet_name="Итоги по месяцам", float_format="%.6f")
+        weekly_pivot.to_excel(writer, sheet_name="Накопительный выкуп", float_format="%.6f")
 
     summary_text = build_summary_report(meta, weekly_summary, monthly_summary, avg_curve)
     (OUTPUT_DIR / "summary.md").write_text(summary_text, encoding="utf-8")
@@ -495,10 +498,7 @@ def main() -> None:
     print(summary_text)
     print("\nSaved outputs:")
     for path in [
-        OUTPUT_DIR / "cohort_metrics_weekly.csv",
-        OUTPUT_DIR / "cohort_summary_weekly.csv",
-        OUTPUT_DIR / "cohort_summary_monthly.csv",
-        OUTPUT_DIR / "cohort_heatmap_table_weekly.csv",
+        OUTPUT_DIR / "cohort_analysis_data.xlsx",
         OUTPUT_DIR / "summary.md",
         CHARTS_DIR / "cohort_heatmap_weekly_d30.png",
         CHARTS_DIR / "cohort_curves_weekly_selected.png",
