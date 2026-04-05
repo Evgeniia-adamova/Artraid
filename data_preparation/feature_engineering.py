@@ -1,0 +1,215 @@
+# feature engineering: создание флагов и новых полей
+# запуск из папки data_preparation
+
+import re
+import pandas as pd
+
+df = pd.read_excel('data/clean/clean_data.xlsx')
+print(f'Загружено: {df.shape[0]} строк, {df.shape[1]} столбцов')
+
+
+#простые флаги
+
+df['has_yclid'] = df['lead_yclid'].notna()
+df['is_paid_mop'] = df['lead_Оплата МОП'].fillna('') == 'Оплачен'
+df['is_repeat_client'] = df['contact_Число сделок'].fillna(1) > 1
+
+
+# lead_tags
+
+PROMO_PATTERNS = [
+    'промокод', 'промо', 'artraid15', 'артрейд15', 'артрейд 15',
+    '1+1', '2+1', '1+1=3', 'акция 1+1', 'акция',
+    'маска в подарок', 'напульсник в подарок', 'наколенник в подарок',
+    'пояс в подарок', 'кодовое слово', 'колесо призов',
+    'для своих', 'дляcвоих',
+]
+
+# порядок - от более специфичного к общему
+SOURCE_MAP = {
+    'npotpz.ru': 'npotpz',
+    'landings.npotpz.ru': 'npotpz',
+    'poyasnica.npotpz.ru': 'npotpz',
+    'tilda': 'tilda',
+    'landing-artraid': 'artraid',
+    'artraid.ru': 'artraid',
+    'artraid': 'artraid',
+    'callibri': 'callibri',
+    'входящий': 'inbound',
+    'jivo': 'jivo',
+    'baza artraid': 'base',
+    'база artraid': 'base',
+    'база artraid исходящий': 'base',
+    'baza': 'base',
+    'база': 'base',
+    'lояльная база': 'base',
+    'лояльная база': 'base',
+    'тпз': 'tpz',
+    'авито тпз': 'tpz',
+    'органик': 'organic',
+    'посетители без рекламной кампании': 'organic',
+    'тг канал': 'telegram',
+    'zdorov.com': 'zdorov',
+    'здоров': 'zdorov',
+    'смс рассылка': 'sms',
+}
+
+QUALITY_MAP = {
+    'а-лид': 'A', 'а': 'A',
+    'b-лид': 'B', 'в-лид': 'B',
+    'c-лид': 'C', 'с-лид': 'C',
+    'd-лид': 'D',
+    'but': 'but',
+}
+
+
+def parse_tags(raw):
+    if pd.isna(raw):
+        return False, None, None, False
+
+    tags_lower = [t.strip().lower() for t in str(raw).split(',')]
+
+    has_promo = any(
+        any(p in t for p in PROMO_PATTERNS)
+        for t in tags_lower
+    )
+
+    source = None
+    for t in tags_lower:
+        if t in SOURCE_MAP:
+            source = SOURCE_MAP[t]
+            break
+    if source is None:
+        for t in tags_lower:
+            for key, val in SOURCE_MAP.items():
+                if key in t:
+                    source = val
+                    break
+            if source:
+                break
+
+    quality = None
+    for t in tags_lower:
+        if t in QUALITY_MAP:
+            quality = QUALITY_MAP[t]
+            break
+
+    is_yur = 'yur' in tags_lower
+
+    return has_promo, source, quality, is_yur
+
+
+parsed = df['lead_tags'].apply(parse_tags)
+df['has_promo']            = parsed.apply(lambda x: x[0])
+df['lead_source_category'] = parsed.apply(lambda x: x[1]).astype('category')
+df['lead_quality']         = parsed.apply(lambda x: x[2]).astype('category')
+df['is_yur']               = parsed.apply(lambda x: x[3])
+
+
+# lead_Состав заказа: бинарные флаги т.к. потом для машинного обучения проще будет
+
+CATEGORY_KEYWORDS = {
+    'маска': 'маска',
+    'наколенник': 'наколенник',
+    'шейный': 'бандаж_шейный',
+    'бандаж': 'бандаж_шейный',
+    'повязка': 'повязка',
+    'напульсник': 'напульсник',
+    'тапки': 'обувь',
+    'сапог': 'обувь',
+    'боты': 'обувь',
+    'стельки': 'обувь',
+    'подушка': 'подушка',
+    'матрас': 'матрас',
+    'пояс': 'пояс',
+    'чехол': 'аксессуары',
+    'варежка': 'аксессуары',
+    'шапка': 'аксессуары',
+    'шорты': 'аксессуары',
+    'жилет': 'аксессуары',
+    'накладка': 'аксессуары',
+    'крем': 'крем',
+    'воск': 'крем',
+}
+
+ALL_CATEGORIES = list(dict.fromkeys(CATEGORY_KEYWORDS.values()))
+
+_item_re = re.compile(r'\d+\)\s*(.+?)(?:\n|$)') # формат 1) берем слово после скобки
+_alt_item_re = re.compile(r'([^,]+?)\s+x\d+')  # альтернативный формат: "Название x1 цена, ..." 
+
+
+def get_order_categories(raw) -> set:
+    if pd.isna(raw):
+        return set()
+
+    text = str(raw)
+
+    items = _item_re.findall(text)
+    items = [
+        i.strip() for i in items
+        if 'Доставка' not in i
+        and 'Артикул' not in i
+        and 'Кол-во' not in i
+        and 'цена' not in i.lower()
+    ]
+
+    if not items:
+        items = [
+            m.group(1).strip() for m in _alt_item_re.finditer(text)
+            if 'доставка' not in m.group(1).lower()
+        ]
+
+    cats = set()
+    for item in items:
+        item_lower = item.lower()
+        for kw, cat in CATEGORY_KEYWORDS.items():
+            if kw in item_lower:
+                cats.add(cat)
+                break
+    return cats
+
+
+order_cats = df['lead_Состав заказа'].apply(get_order_categories)
+
+for cat in ALL_CATEGORIES:
+    df[f'has_{cat}'] = order_cats.apply(lambda cats: cat in cats)
+
+df['n_product_categories'] = order_cats.apply(len).astype('Int64')
+
+
+# проверка лага sale_ts и lead_Дата создания сделки
+
+df['sale_ts'] = pd.to_datetime(df['sale_ts'], errors='coerce')
+df['lead_Дата создания сделки'] = pd.to_datetime(df['lead_Дата создания сделки'], errors='coerce')
+lag = (df['sale_ts'] - df['lead_Дата создания сделки']).dt.total_seconds() / 86400
+print(f'\nЛаг sale_ts − lead_Дата создания сделки:')
+print(f'  среднее {lag.mean():.2f} дней, медиана {lag.median():.2f} дней')
+print(f'  >100 дней: {(lag > 100).sum()} строк')
+print(f'  <0 дней:   {(lag < 0).sum()} строк')
+
+
+# статистика
+
+print('\nФлаги:')
+for col in ['has_yclid', 'has_promo', 'is_paid_mop', 'is_repeat_client', 'is_yur']:
+    n = df[col].sum()
+    print(f'  {col}: {n} ({df[col].mean()*100:.1f}%)')
+
+print('\nlead_source_category:')
+print(df['lead_source_category'].value_counts(dropna=False).to_string())
+
+print('\nlead_quality:')
+print(df['lead_quality'].value_counts(dropna=False).to_string())
+
+print('\nКатегории товаров:')
+for cat in ALL_CATEGORIES:
+    col = f'has_{cat}'
+    n = df[col].sum()
+    print(f'  {col}: {n} ({n/len(df)*100:.1f}%)')
+print(f'  n_product_categories: среднее={df["n_product_categories"].mean():.2f}, медиана={df["n_product_categories"].median()}')
+
+
+# сейв
+
+df.to_excel('data/clean/clean_data.xlsx', index=False, engine='openpyxl')
+print(f'\nСохранено: clean_data.xlsx — {len(df)} строк, {df.shape[1]} столбцов')
