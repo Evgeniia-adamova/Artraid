@@ -5,6 +5,7 @@ import re
 import pandas as pd
 
 df = pd.read_excel('data/clean/clean_data.xlsx')
+df.drop(columns=['product_category'], errors='ignore', inplace=True)  # убираем старый столбец если остался
 print(f'Загружено: {df.shape[0]} строк, {df.shape[1]} столбцов')
 
 
@@ -54,18 +55,9 @@ SOURCE_MAP = {
     'смс рассылка': 'sms',
 }
 
-QUALITY_MAP = {
-    'а-лид': 'A', 'а': 'A',
-    'b-лид': 'B', 'в-лид': 'B',
-    'c-лид': 'C', 'с-лид': 'C',
-    'd-лид': 'D',
-    'but': 'but',
-}
-
-
 def parse_tags(raw):
     if pd.isna(raw):
-        return False, None, None, False
+        return False, None, False
 
     tags_lower = [t.strip().lower() for t in str(raw).split(',')]
 
@@ -88,22 +80,15 @@ def parse_tags(raw):
             if source:
                 break
 
-    quality = None
-    for t in tags_lower:
-        if t in QUALITY_MAP:
-            quality = QUALITY_MAP[t]
-            break
-
     is_yur = 'yur' in tags_lower
 
-    return has_promo, source, quality, is_yur
+    return has_promo, source, is_yur
 
 
 parsed = df['lead_tags'].apply(parse_tags)
-df['has_promo']            = parsed.apply(lambda x: x[0])
+df['has_promo'] = parsed.apply(lambda x: x[0])
 df['lead_source_category'] = parsed.apply(lambda x: x[1]).astype('category')
-df['lead_quality']         = parsed.apply(lambda x: x[2]).astype('category')
-df['is_yur']               = parsed.apply(lambda x: x[3])
+df['is_yur'] = parsed.apply(lambda x: x[2])
 
 
 # lead_Состав заказа: бинарные флаги т.к. потом для машинного обучения проще будет
@@ -111,16 +96,22 @@ df['is_yur']               = parsed.apply(lambda x: x[3])
 CATEGORY_KEYWORDS = {
     'маска': 'маска',
     'наколенник': 'наколенник',
+    'налокотник': 'наколенник', # налокотник = та же категория ортезов
     'шейный': 'бандаж_шейный',
     'бандаж': 'бандаж_шейный',
+    'рогалик': 'бандаж_шейный', # рогалик на шею
     'повязка': 'повязка',
+    'держатель': 'повязка', # держатель к повязке
     'напульсник': 'напульсник',
+    'муфта': 'напульсник', # муфта -> запястье
     'тапки': 'обувь',
     'сапог': 'обувь',
     'боты': 'обувь',
     'стельки': 'обувь',
     'подушка': 'подушка',
     'матрас': 'матрас',
+    'одеяло': 'постельное',
+    'капсула': 'постельное',
     'пояс': 'пояс',
     'чехол': 'аксессуары',
     'варежка': 'аксессуары',
@@ -128,8 +119,21 @@ CATEGORY_KEYWORDS = {
     'шорты': 'аксессуары',
     'жилет': 'аксессуары',
     'накладка': 'аксессуары',
+    'бандана': 'аксессуары',
+    'накидка': 'аксессуары',
+    'сумка': 'аксессуары',
+    'пушап': 'аксессуары',
     'крем': 'крем',
     'воск': 'крем',
+    'масляный': 'крем',
+    # пчелиные продукты/БАДы
+    'прополис': 'бады',
+    'перга': 'бады',
+    'огнёвка': 'бады',
+    'огневка': 'бады',
+    'гомогенат': 'бады',
+    'трутневый': 'бады',
+    'экстракт': 'бады',
 }
 
 ALL_CATEGORIES = list(dict.fromkeys(CATEGORY_KEYWORDS.values()))
@@ -157,6 +161,15 @@ def get_order_categories(raw) -> set:
         items = [
             m.group(1).strip() for m in _alt_item_re.finditer(text)
             if 'доставка' not in m.group(1).lower()
+        ]
+
+    # формат 3: "Название 2940р\nДоставка 300р"
+    if not items:
+        items = [
+            line.strip() for line in text.split('\n')
+            if line.strip()
+            and 'доставка' not in line.lower()
+            and not line.strip().isdigit()
         ]
 
     cats = set()
@@ -198,8 +211,6 @@ for col in ['has_yclid', 'has_promo', 'is_paid_mop', 'is_repeat_client', 'is_yur
 print('\nlead_source_category:')
 print(df['lead_source_category'].value_counts(dropna=False).to_string())
 
-print('\nlead_quality:')
-print(df['lead_quality'].value_counts(dropna=False).to_string())
 
 print('\nКатегории товаров:')
 for cat in ALL_CATEGORIES:
