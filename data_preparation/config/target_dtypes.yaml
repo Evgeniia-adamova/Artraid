@@ -4,16 +4,12 @@
 # Список столбцов для загрузки (use_cols)
 use_cols:
   - outcome_unknown   # только для фильтрации строк.
-  - lead_Источник
-  - lead_yclid
-  - lead_tags
   - lead_Тариф Доставки
   - contact_Город
   - lead_Служба доставки
   - returned_ts
   - rejected_ts
   - lead_Скидка
-  - lead_Условный отказ
   - lead_Оплата МОП
   - lead_Дата создания сделки
   - lead_Дата перехода в Сборку
@@ -29,13 +25,31 @@ use_cols:
   - handed_to_delivery_ts
   - lead_Проблема
   - lead_Вид оплаты
-  - lead_Состав заказа
   - contact_id
   - sale_ts
   - sale_date
   - lead_price
   - lead_id
   - lead_responsible_user_id
+  - has_yclid
+  - is_paid_mop
+  - is_repeat_client
+  - has_promo
+  - lead_source_category
+  - is_yur
+  - n_product_categories
+  - has_маска
+  - has_наколенник
+  - has_бандаж_шейный
+  - has_повязка
+  - has_напульсник
+  - has_обувь
+  - has_подушка
+  - has_матрас
+  - has_пояс
+  - has_аксессуары
+  - has_крем
+
 
 # Приведение типов
 
