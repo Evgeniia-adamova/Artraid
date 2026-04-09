@@ -220,6 +220,39 @@ for cat in ALL_CATEGORIES:
 print(f'  n_product_categories: среднее={df["n_product_categories"].mean():.2f}, медиана={df["n_product_categories"].median()}')
 
 
+# delivery_group: создаем группы в зависимости от кол-ва дней от момента передачи в доставку до ПВЗ/курьер
+df['delivery_days'] = (df['issued_or_pvz_ts'] - df['handed_to_delivery_ts']).dt.days
+df.loc[df['delivery_days'] < 0, 'delivery_days'] = None
+
+def assign_delivery_group(days):
+    if pd.isna(days) or days < 0:
+        return None
+    if days <= 3:
+        return 'быстрая'
+    elif days <= 5:
+        return 'средняя'
+    elif days <= 10:
+        return 'долгая'
+    else:
+        return 'очень долгая'
+
+df['delivery_group'] = df['delivery_days'].apply(assign_delivery_group).astype('category')
+
+# price_group: создаем группы в зависимости от стоимости заказа
+def assign_price_group(price):
+    if pd.isna(price) or price < 0:
+        return None
+    if price <= 5000:
+        return 'до 5к'
+    elif price <= 15000:
+        return '5к-15к'
+    elif price <= 20000:
+        return '15к-20к'
+    else:
+        return '20к+'
+
+df['price_group'] = df['lead_price'].apply(assign_price_group).astype('category')
+
 # сейв
 
 df.to_excel('data/clean/clean_data.xlsx', index=False, engine='openpyxl')
