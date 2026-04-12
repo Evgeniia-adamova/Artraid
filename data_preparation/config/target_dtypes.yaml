@@ -148,6 +148,7 @@ float_to_datetime:
   - closed_ts
   - handed_to_delivery_ts
   - lead_Дата получения денег на Р/С
+  - lead_Дата создания сделки
 
 # int64 → datetime64[ns]
 int_to_datetime:

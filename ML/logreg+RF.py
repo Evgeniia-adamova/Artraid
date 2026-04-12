@@ -23,7 +23,7 @@ from sklearn.inspection import permutation_importance
 # пути
 ml_path = Path(__file__).parent
 base_path = ml_path.parent
-clean_data_file = base_path / 'data_preparation' / 'data' / 'clean' / 'clean_data_with_regions.xlsx'
+clean_data_file = base_path / 'data_preparation' / 'data' / 'clean' / 'clean_data.xlsx'
 model_path = ml_path / 'Models'
 log_path = ml_path / 'Logs'
 img_path = ml_path / 'Images'
@@ -62,16 +62,19 @@ def ReplacingTS(DATA, stages):
 
 def Nan2Adequate(DATA, last_stage=None):
     DAT = DATA.copy()
-    DAT[['lead_Скидка']] = DAT[['lead_Скидка']].fillna(0)
+    if 'lead_Скидка' in DAT.columns:
+        DAT[['lead_Скидка']] = DAT[['lead_Скидка']].fillna(0)
     DAT[['lead_Квалификация лида']] = DAT[['lead_Квалификация лида']].fillna('Неизвестно')
     DAT[['lead_source_category']] = DAT[['lead_source_category']].fillna('Неизвестно')
-    DAT['is_ltv_unknown'] = DAT['contact_LTV'].isna().astype(int)
-    DAT[['contact_LTV', 'contact_Число сделок']] = DAT[['contact_LTV', 'contact_Число сделок']].fillna(0)
+    ltv_cols = [c for c in ['contact_LTV', 'contact_Число сделок'] if c in DAT.columns]
+    DAT[ltv_cols] = DAT[ltv_cols].fillna(0)
+    delivery_cols = [c for c in ['delivery_group', 'days_sale_to_handed', 'days_handed_to_issued_pvz', 'lead_Тариф Доставки'] if c in DAT.columns]
+    DAT.dropna(subset=delivery_cols, inplace=True, ignore_index=True)
     DAT = Nan2Missing(DAT)
-    stages = ['sale_ts', 'lead_Дата перехода в Сборку', 'handed_to_delivery_ts', 'issued_or_pvz_ts']
-    if last_stage is not None:
+    stages = [c for c in ['sale_ts', 'lead_Дата перехода в Сборку', 'handed_to_delivery_ts', 'issued_or_pvz_ts'] if c in DAT.columns]
+    if last_stage is not None and last_stage in stages:
         drop = stages[stages.index(last_stage):]
-        DAT.drop(drop, axis=1, inplace=True)
+        DAT.drop([c for c in drop if c in DAT.columns], axis=1, inplace=True)
         stages = stages[:stages.index(last_stage)]
     DAT = ReplacingTS(DAT, stages)
     return DAT
@@ -97,10 +100,18 @@ def CategoricalOrdinal(DATA):
 print('Загрузка данных...')
 CLEAN_DATA = pd.read_excel(clean_data_file)
 
-drop1 = ['lead_tags', 'contact_Город', 'contact_id', 'lead_id', 'lead_Состав заказа', 'lead_yclid']
+drop1 = ['lead_tags', 'contact_Город', 'contact_id', 'lead_id', 'lead_Состав заказа', 'lead_yclid', 'lead_responsible_user_id']
 drop2 = ['sale_date', 'closed_ts', 'received_ts', 'rejected_ts', 'returned_ts', 'days_to_outcome',
          'lead_Условный отказ', 'lead_Оплата МОП', 'is_paid_mop',
-         'lead_Дата получения денег на Р/С', 'lead_Источник', 'lead_Дата создания сделки']
+         'lead_Дата получения денег на Р/С', 'lead_Источник', 'lead_Дата создания сделки',
+         'lead_Скидка', 'contact_Число сделок', 'handed_to_delivery_ts',
+         # утечка: интервалы известны только после исхода сделки
+         'days_sale_to_received', 'days_sale_to_rejected', 'days_sale_to_returned', 'days_sale_to_closed',
+         # утечка: LTV обновляется после выкупа
+         'contact_LTV',
+         # модель 1: прогноз в момент создания заказа - логистика ещё не известна
+         'days_sale_to_handed', 'days_handed_to_issued_pvz', 'delivery_group',
+         'issued_or_pvz_ts', 'days_received_to_issued']
 
 DATA = CLEAN_DATA.drop(columns=[c for c in drop1 + drop2 if c in CLEAN_DATA.columns])
 del CLEAN_DATA
@@ -151,7 +162,8 @@ lr_model.fit(X_train_scaled, y_train)
 lr_time = str(datetime.now() - start).split('.')[0]
 
 lr_proba = lr_model.predict_proba(X_test_scaled)[:, 1]
-lr_preds = lr_model.predict(X_test_scaled)
+LR_THRESHOLD = 0.5  # порог 0.5: balanced даёт recall невыкупов ~78%; при 0.6 - больше невыкупов, меньше выкупов
+lr_preds = (lr_proba >= LR_THRESHOLD).astype(int)
 lr_auc = roc_auc_score(y_test, lr_proba)
 lr_f1 = f1_score(y_test, lr_preds, average='macro')
 
@@ -177,7 +189,8 @@ rf_model.fit(X_train, y_train)
 rf_time = str(datetime.now() - start).split('.')[0]
 
 rf_proba = rf_model.predict_proba(X_test)[:, 1]
-rf_preds = rf_model.predict(X_test)
+RF_THRESHOLD = 0.5  # порог 0.5: recall невыкупов 84%, recall выкупов 65%; для макс. ловли невыкупов - 0.6
+rf_preds = (rf_proba >= RF_THRESHOLD).astype(int)
 rf_auc = roc_auc_score(y_test, rf_proba)
 rf_f1 = f1_score(y_test, rf_preds, average='macro')
 
@@ -222,6 +235,58 @@ drawCoef(lr_model, features, img_path / 'LogReg-baseline_coef.png')
 print('Permutation Importance для Random Forest...')
 rf_perimp = permutation_importance(rf_model, X_test, y_test, n_repeats=10, random_state=seed, scoring='roc_auc')
 drawPerImp(rf_perimp, features, 'RF-baseline-500', img_path / 'RF-baseline-500_perimp.png')
+
+# группы признаков (по target_dtypes.yaml)
+FEATURE_GROUPS = {
+    'Клиент': ['lead_Категория и варианты выбора', 'lead_Квалификация лида', 'is_repeat_client', 'is_yur', 'lead_Проблема', 'lead_Вид оплаты', 'lead_region'],
+    'Заказ': ['lead_price', 'has_discount', 'n_product_categories', 'price_group', 'has_маска', 'has_наколенник', 'has_бандаж_шейный', 'has_повязка', 'has_напульсник', 'has_обувь', 'has_подушка', 'has_матрас', 'has_постельное', 'has_пояс', 'has_аксессуары', 'has_крем', 'has_бады'],
+    'Маркетинг': ['has_yclid', 'has_promo', 'lead_source_category'],
+    'Логистика': ['lead_Служба доставки', 'lead_Тариф Доставки'],
+    'Время': ['sale_ts', 'sale_hour', 'sale_day_of_week', 'sale_month', 'lead_created_hour', 'lead_created_day_of_week', 'lead_created_month', 'days_creation_to_sale'],
+}
+
+def drawGroupedPerImp(perimp_means, features, model_name, save_path):
+    imp = pd.Series(perimp_means, index=features)
+    group_imp = {}
+    for group, cols in FEATURE_GROUPS.items():
+        vals = imp[[c for c in cols if c in imp.index]]
+        group_imp[group] = vals.sum()
+    group_series = pd.Series(group_imp).sort_values()
+    colors = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2']
+    plt.figure(figsize=(8, 4))
+    bars = plt.barh(group_series.index, group_series.values, color=colors[:len(group_series)])
+    plt.xlabel('Суммарный Permutation Importance (AUC)')
+    plt.title(f'Важность групп признаков - {model_name}')
+    for bar, val in zip(bars, group_series.values):
+        plt.text(max(val + 0.001, 0.001), bar.get_y() + bar.get_height() / 2, f'{val:.4f}', va='center', fontsize=9)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f'График сохранен: {save_path.name}')
+
+def drawGroupedCoef(model, features, save_path):
+    coef = pd.Series(np.abs(model.coef_[0]), index=features)
+    group_imp = {}
+    for group, cols in FEATURE_GROUPS.items():
+        vals = coef[[c for c in cols if c in coef.index]]
+        group_imp[group] = vals.sum()
+    group_series = pd.Series(group_imp).sort_values()
+    colors = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2']
+    _, ax = plt.subplots(figsize=(8, 4))
+    bars = ax.barh(group_series.index, group_series.values, color=colors[:len(group_series)])
+    ax.set_xlabel('Суммарный коэффициент')
+    ax.set_title('Важность групп признаков - LogReg-baseline')
+    ax.set_xlim(0, group_series.max() * 1.15)
+    for bar, val in zip(bars, group_series.values):
+        ax.text(val + group_series.max() * 0.01, bar.get_y() + bar.get_height() / 2, f'{val:.3f}', va='center', fontsize=9)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f'График сохранен: {save_path.name}')
+
+print('\nГрупповая важность признаков...')
+drawGroupedPerImp(rf_perimp.importances_mean, features, 'RF-baseline-500', img_path / 'RF-baseline-500_grouped.png')
+drawGroupedCoef(lr_model, features, img_path / 'LogReg-baseline_grouped.png')
 
 importances = pd.Series(rf_model.feature_importances_, index=features).sort_values(ascending=False)
 print('\nТоп-10 признаков (Random Forest, gini):')

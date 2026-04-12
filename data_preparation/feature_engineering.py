@@ -190,15 +190,65 @@ for cat in ALL_CATEGORIES:
 df['n_product_categories'] = order_cats.apply(len).astype('Int64')
 
 
-# проверка лага sale_ts и lead_Дата создания сделки
+# приведение таймстемпов
 
 df['sale_ts'] = pd.to_datetime(df['sale_ts'], errors='coerce')
 df['lead_Дата создания сделки'] = pd.to_datetime(df['lead_Дата создания сделки'], errors='coerce')
-lag = (df['sale_ts'] - df['lead_Дата создания сделки']).dt.total_seconds() / 86400
+
+TS_COLS = ['received_ts', 'issued_or_pvz_ts', 'handed_to_delivery_ts', 'closed_ts', 'returned_ts', 'rejected_ts']
+for col in TS_COLS:
+    if col in df.columns:
+        df[col] = pd.to_datetime(df[col], errors='coerce')
+
+
+# таймстемп-фичи: час, день недели, месяц
+
+for ts_col, prefix in [('sale_ts', 'sale'), ('lead_Дата создания сделки', 'lead_created')]:
+    if ts_col in df.columns:
+        df[f'{prefix}_hour']       = df[ts_col].dt.hour.astype('Int64')
+        df[f'{prefix}_day_of_week'] = df[ts_col].dt.dayofweek.astype('Int64')  # 0=пн, 6=вс
+        df[f'{prefix}_month']      = df[ts_col].dt.month.astype('Int64')
+
+
+# интервалы между событиями (в днях)
+
+def days_between(ts_end, ts_start):
+    delta = (ts_end - ts_start).dt.total_seconds() / 86400
+    delta[delta < 0] = None  # отрицательные интервалы - артефакты
+    return delta
+
+INTERVALS = [
+    ('days_creation_to_sale', 'sale_ts', 'lead_Дата создания сделки'),
+    ('days_sale_to_received', 'received_ts', 'sale_ts'),
+    ('days_received_to_issued', 'issued_or_pvz_ts', 'received_ts'),
+    ('days_sale_to_closed', 'closed_ts', 'sale_ts'),
+    ('days_sale_to_returned', 'returned_ts', 'sale_ts'),
+    ('days_sale_to_rejected', 'rejected_ts', 'sale_ts'),
+]
+
+for col_name, end_col, start_col in INTERVALS:
+    if end_col in df.columns and start_col in df.columns:
+        df[col_name] = days_between(df[end_col], df[start_col])
+
+# проверка аномальных лагов sale_ts − lead_Дата создания сделки
+
+lag = df['days_creation_to_sale'] if 'days_creation_to_sale' in df.columns else (df['sale_ts'] - df['lead_Дата создания сделки']).dt.total_seconds() / 86400
 print(f'\nЛаг sale_ts − lead_Дата создания сделки:')
-print(f'  среднее {lag.mean():.2f} дней, медиана {lag.median():.2f} дней')
-print(f'  >100 дней: {(lag > 100).sum()} строк')
-print(f'  <0 дней:   {(lag < 0).sum()} строк')
+print(f' среднее {lag.mean():.2f} дней, медиана {lag.median():.2f} дней')
+print(f' >100 дней: {(lag > 100).sum()} строк')
+print(f' <0 дней:   {(lag < 0).sum()} строк')
+
+# как обсудили на косультационной встрече - можно дропнуть 4 строки с аномальными лагами
+anomaly_mask = lag > 100
+if anomaly_mask.sum() > 0:
+    df = df[~anomaly_mask].reset_index(drop=True)
+    print(f' Удалено аномальных строк (лаг >100 дней): {anomaly_mask.sum()}')
+
+# удаление технических заказов без тарифа доставки
+if 'lead_Тариф Доставки' in df.columns:
+    n_before = len(df)
+    df = df[df['lead_Тариф Доставки'].notna()].reset_index(drop=True)
+    print(f' Удалено строк без тарифа доставки: {n_before - len(df)}')
 
 
 # статистика
@@ -218,6 +268,17 @@ for cat in ALL_CATEGORIES:
     n = df[col].sum()
     print(f'  {col}: {n} ({n/len(df)*100:.1f}%)')
 print(f'  n_product_categories: среднее={df["n_product_categories"].mean():.2f}, медиана={df["n_product_categories"].median()}')
+
+print('\nТаймстемп-фичи:')
+for col in ['sale_hour', 'sale_day_of_week', 'sale_month', 'lead_created_hour', 'lead_created_day_of_week', 'lead_created_month']:
+    if col in df.columns:
+        print(f'  {col}: непустых={df[col].notna().sum()}, мода={df[col].mode().iloc[0] if df[col].notna().any() else "—"}')
+
+print('\nИнтервалы (дней):')
+for col_name, _, _ in INTERVALS:
+    if col_name in df.columns:
+        s = df[col_name].dropna()
+        print(f'  {col_name}: n={len(s)}, среднее={s.mean():.1f}, медиана={s.median():.1f}')
 
 
 # delivery_group: создаем группы в зависимости от кол-ва дней от момента передачи в доставку до ПВЗ/курьер
