@@ -1,42 +1,96 @@
 # Конфигурация целевых типов данных
 # Столбцы, которых нет в датасете, будут пропущены автоматически
 
-# Список столбцов для загрузки (use_cols)
+# Список столбцов для этапа предварительной подготовки даннных
 use_cols:
-  - outcome_unknown   # только для фильтрации строк.
-  - lead_Тариф Доставки
-  - contact_Город
-  - lead_Служба доставки
   - returned_ts
   - rejected_ts
   - lead_Скидка
   - lead_Оплата МОП
-  - lead_Дата создания сделки
-  - lead_Дата перехода в Сборку
+  - lead_Категория и варианты выбора
+  - lead_yclid
   - lead_Дата получения денег на Р/С
+  - lead_Дата создания сделки
   - lead_Квалификация лида
   - contact_LTV
   - contact_Число сделок
   - received_ts
   - issued_or_pvz_ts
+  - lead_Тариф Доставки
+  - days_handed_to_issued_pvz
+  - days_sale_to_handed
   - closed_ts
   - days_to_outcome
+  - lead_tags
   - buyout_flag
   - handed_to_delivery_ts
+  - contact_Город
   - lead_Проблема
   - lead_Вид оплаты
+  - lead_Состав заказа
+  - lead_Служба доставки
   - contact_id
   - sale_ts
   - sale_date
   - lead_price
   - lead_id
+  - outcome_unknown               # фильтр
+  - lifecycle_incomplete          # фильтр
   - lead_responsible_user_id
-  - has_yclid
-  - is_paid_mop
+
+filter_cols:
+  - lifecycle_incomplete
+  - outcome_unknown
+
+# ID / ключи
+id_cols:
+  - lead_id
+  - contact_id
+  - lead_responsible_user_id
+
+# Сырьё для FE (используются для создания признаков, в модель не идут)
+fe_source_cols:
+  - lead_Оплата МОП          # → is_paid_mop
+  - contact_Город             # → region
+  - contact_Число сделок      # → is_repeat_client
+  - returned_ts             # -> интервалы
+  - rejected_ts             # -> интервалы
+  - lead_Скидка             # -> has_discount
+  - lead_yclid              # -> has_yclid
+  - issued_or_pvz_ts        # -> интервалы
+  - lead_tags               # -> has_promo, is_yur, lead_source_category
+  - handed_to_delivery_ts   # -> интервалы
+  - lead_Состав заказа      # -> n_product_categories, has_маска, has_повязка...
+  - sale_ts                 # -> интервалы
+  - lead_price              # → price_group
+
+# Когортный анализ (временные метки + интервалы)
+cohort_cols:
+  - sale_date
+  - buyout_flag
+  - received_ts
+  - rejected_ts
+  - returned_ts
+
+# ML-признаки (выявление факторов + прогнозирование)
+ml_cols:
+
+  # клиент
+  - lead_Категория и варианты выбора
+  - lead_Квалификация лида          # также: заказ
+  - contact_LTV
   - is_repeat_client
-  - has_promo
-  - lead_source_category
   - is_yur
+  - lead_Проблема                   # также: заказ
+  - lead_Вид оплаты                 # также: заказ
+  - region                          # также: логистика
+
+  # заказ
+  - lead_price
+  - lead_Скидка
+  - has_discount
+  - has_promo                       # также: маркетинг
+  - lead_source_category            # также: маркетинг
   - n_product_categories
   - has_маска
   - has_наколенник
@@ -49,10 +103,29 @@ use_cols:
   - has_пояс
   - has_аксессуары
   - has_крем
+  - has_постельное
+  - has_бады
+  - price_group
 
+  # маркетинг
+  - has_yclid
+
+  # менеджер/операции
+  - days_sale_to_handed
+
+  # логистика
+  - lead_Служба доставки
+  - lead_Тариф Доставки
+  - days_handed_to_issued_pvz
+  - delivery_group
+
+# Финансовый анализ потерь
+finance_cols:
+  - lead_Скидка
+  - lead_Оплата МОП
+  - lead_price
 
 # Приведение типов
-
 # str → category
 str_to_category:
   - lead_Источник
@@ -62,6 +135,7 @@ str_to_category:
   - lead_Квалификация лида
   - lead_Проблема
   - lead_Вид оплаты
+  - lead_Категория и варианты выбора
 
 str_to_float: []
 
@@ -73,8 +147,6 @@ float_to_datetime:
   - issued_or_pvz_ts
   - closed_ts
   - handed_to_delivery_ts
-  - lead_Дата создания сделки
-  - lead_Дата перехода в Сборку
   - lead_Дата получения денег на Р/С
 
 # int64 → datetime64[ns]
@@ -106,6 +178,8 @@ object_to_int:
 #   - contact_LTV
 #   - contact_Число сделок
 #   - days_to_outcome
+#  - days_handed_to_issued_pvz
+#  - days_sale_to_handed
 #
 # int64 остается исходный тип:
 #   - lead_price
