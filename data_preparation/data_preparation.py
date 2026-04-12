@@ -70,6 +70,13 @@ if 'outcome_unknown' in df.columns:
     print(f'Удалено строк с outcome_unknown=True: {rows_before - len(df)}')
     df = df.drop(columns=['outcome_unknown'])
 
+# удаление строк с lifecycle_incomplete == True (сделка ещё в процессе)
+if 'lifecycle_incomplete' in df.columns:
+    rows_before = len(df)
+    df = df[df['lifecycle_incomplete'] != True]
+    print(f'Удалено строк с lifecycle_incomplete=True: {rows_before - len(df)}')
+    df = df.drop(columns=['lifecycle_incomplete'])
+
 # Сохранение
 df.to_excel('data/clean/clean_data.xlsx', index=False, engine='openpyxl')
 print(f'Сохранено: clean_data.xlsx — {len(df)} строк, {df.shape[1]} столбцов')
