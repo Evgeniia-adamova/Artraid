@@ -14,7 +14,7 @@ print(f'Загружено: {df.shape[0]} строк, {df.shape[1]} столбц
 df['has_yclid'] = df['lead_yclid'].notna()
 df['is_paid_mop'] = df['lead_Оплата МОП'].fillna('') == 'Оплачен'
 df['is_repeat_client'] = df['contact_Число сделок'].fillna(1) > 1
-
+df['has_discount'] = df['lead_Скидка'].notna()
 
 # lead_tags
 
@@ -221,8 +221,7 @@ print(f'  n_product_categories: среднее={df["n_product_categories"].mean(
 
 
 # delivery_group: создаем группы в зависимости от кол-ва дней от момента передачи в доставку до ПВЗ/курьер
-df['delivery_days'] = (df['issued_or_pvz_ts'] - df['handed_to_delivery_ts']).dt.days
-df.loc[df['delivery_days'] < 0, 'delivery_days'] = None
+df.loc[df['days_handed_to_issued_pvz'] < 0, 'days_handed_to_issued_pvz'] = None
 
 def assign_delivery_group(days):
     if pd.isna(days) or days < 0:
@@ -236,7 +235,7 @@ def assign_delivery_group(days):
     else:
         return 'очень долгая'
 
-df['delivery_group'] = df['delivery_days'].apply(assign_delivery_group).astype('category')
+df['delivery_group'] = df['days_handed_to_issued_pvz'].apply(assign_delivery_group).astype('category')
 
 # price_group: создаем группы в зависимости от стоимости заказа
 def assign_price_group(price):
