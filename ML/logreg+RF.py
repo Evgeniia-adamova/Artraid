@@ -253,12 +253,13 @@ def drawGroupedPerImp(perimp_means, features, model_name, save_path):
         group_imp[group] = vals.sum()
     group_series = pd.Series(group_imp).sort_values()
     colors = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2']
-    plt.figure(figsize=(8, 4))
-    bars = plt.barh(group_series.index, group_series.values, color=colors[:len(group_series)])
-    plt.xlabel('Суммарный Permutation Importance (AUC)')
-    plt.title(f'Важность групп признаков - {model_name}')
+    _, ax = plt.subplots(figsize=(8, 4))
+    bars = ax.barh(group_series.index, group_series.values, color=colors[:len(group_series)])
+    ax.set_xlabel('Суммарный Permutation Importance (AUC)')
+    ax.set_title(f'Важность групп признаков - {model_name}')
+    ax.set_xlim(0, group_series.max() * 1.15)
     for bar, val in zip(bars, group_series.values):
-        plt.text(max(val + 0.001, 0.001), bar.get_y() + bar.get_height() / 2, f'{val:.4f}', va='center', fontsize=9)
+        ax.text(val + group_series.max() * 0.01, bar.get_y() + bar.get_height() / 2, f'{val:.4f}', va='center', fontsize=9)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150)
     plt.close()

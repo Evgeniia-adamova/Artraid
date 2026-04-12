@@ -316,4 +316,4 @@ df['price_group'] = df['lead_price'].apply(assign_price_group).astype('category'
 # сейв
 
 df.to_excel('data/clean/clean_data.xlsx', index=False, engine='openpyxl')
-print(f'\nСохранено: clean_data.xlsx — {len(df)} строк, {df.shape[1]} столбцов')
+print(f'\nСохранено: clean_data.xlsx - {len(df)} строк, {df.shape[1]} столбцов')
