@@ -56,7 +56,7 @@ CONFIG_DIR = BASE_DIR / "config"
 # Input: processed clean data from data preparation pipeline
 INPUT_EXCEL_PATH = CLEAN_DIR / "clean_data.xlsx"
 # Output: data with extracted regions
-OUTPUT_EXCEL_PATH = CLEAN_DIR / "clean_data_with_regions.xlsx"
+OUTPUT_EXCEL_PATH = CLEAN_DIR / "clean_data.xlsx"
 # Cache: precomputed city->region mapping from OSM
 CITY_MAP_CACHE = REGION_DATASETS_DIR / "osm_city_region_map.csv"
 
