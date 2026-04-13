@@ -6,6 +6,7 @@
 
 <h2>Отчёт</h2>
 <p><a href="https://docs.google.com/document/d/1ftziYs5l8C9a2R0BMVc3bz_ZoBZlmsitoqJdzfZtR00/edit?tab=t.twchr62luhq5">Открыть отчёт в Google Docs</a></p>
+<p><a href="https://drive.google.com/file/d/1VSdjkJVU3iWcX7OdBprYzcU476A5bolq/view?usp=sharing">Открыть презентацию</a></p>
 
 <h2>Пайплайн</h2>
 <ol>
