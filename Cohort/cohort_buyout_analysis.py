@@ -26,6 +26,7 @@ REQUIRED_COLUMNS = [
     "received_ts",
     "rejected_ts",
     "returned_ts",
+    "lead_region",
 ]
 DATE_COLUMNS = ["sale_date", "received_ts", "rejected_ts", "returned_ts"]
 BUSINESS_KEY_CANDIDATES = ["lead_id", "order_id", "lead_Номер заказа на сайте"]
@@ -202,6 +203,11 @@ def select_line_cohorts(summary: pd.DataFrame) -> list[pd.Timestamp]:
     return selected
 
 
+def get_top_regions(df: pd.DataFrame, n: int = 10) -> list[str]:
+    """Получить топ-N регионов по количеству заказов."""
+    return df["lead_region"].value_counts().head(n).index.tolist()
+
+
 def plot_heatmap(cohort_pivot: pd.DataFrame, output_path: Path) -> None:
     heatmap_data = cohort_pivot.tail(HEATMAP_WEEKS).copy()
     if heatmap_data.empty:
@@ -290,6 +296,98 @@ def plot_cohort_sizes(summary: pd.DataFrame, output_path: Path, title: str) -> N
     plt.close()
 
 
+def plot_regional_daily_comparison(region_series: dict[str, pd.Series], output_path: Path) -> None:
+    """Сравнительные кривые среднего выкупа по топ регионам."""
+    if not region_series:
+        return
+
+    plt.figure(figsize=(14, 7))
+    colors = plt.cm.tab10(np.linspace(0, 1, len(region_series)))
+    
+    for i, (region, curve) in enumerate(sorted(region_series.items())):
+        curve_clean = curve.dropna().sort_index()
+        plt.plot(curve_clean.index, curve_clean.values * 100, marker="o", linewidth=2.5, label=region, color=colors[i])
+    
+    for day in KEY_DAYS:
+        plt.axvline(day, color="gray", linestyle=":", linewidth=1, alpha=0.5)
+    
+    plt.title("Накопительный выкуп: сравнение региональных когорт")
+    plt.xlabel("Days after order")
+    plt.ylabel("Cumulative buyout rate, %")
+    plt.xlim(0, MAX_DAY)
+    plt.ylim(bottom=0)
+    plt.grid(alpha=0.25)
+    plt.legend(title="Регион", fontsize=10)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close()
+
+
+def plot_regional_final_buyout_comparison(regions_data: dict[str, pd.DataFrame], output_path: Path) -> None:
+    """Сравнение финальных выкупов по регионам как столбчатая диаграмма."""
+    final_rates = {}
+    region_orders = {}
+    
+    for region, summary in regions_data.items():
+        mature = summary.loc[summary["fully_mature"]]
+        if not mature.empty:
+            avg_rate = mature[f"buyout_rate_day_{MAX_DAY}"].mean()
+            final_rates[region] = avg_rate * 100
+            region_orders[region] = int(mature["orders_total"].sum())
+    
+    if not final_rates:
+        return
+    
+    regions = sorted(final_rates.keys(), key=lambda x: final_rates[x], reverse=True)
+    rates = [final_rates[r] for r in regions]
+    
+    plt.figure(figsize=(14, 7))
+    bars = plt.bar(regions, rates, color=plt.cm.Spectral(np.linspace(0.2, 0.8, len(regions))))
+    plt.axhline(np.mean(rates), color="black", linestyle="--", linewidth=1.5, label=f"Среднее: {np.mean(rates):.1f}%")
+    
+    for i, (region, rate) in enumerate(zip(regions, rates)):
+        plt.text(i, rate + 1, f"{rate:.1f}%\n({region_orders.get(region, 0):,})", 
+                ha="center", va="bottom", fontsize=9)
+    
+    plt.title(f"Финальный buyout rate по регионам (D{MAX_DAY}, только зрелые когорты)")
+    plt.ylabel(f"Buyout rate, %")
+    plt.xticks(rotation=45, ha="right")
+    plt.grid(axis="y", alpha=0.25)
+    plt.legend(loc="upper right")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close()
+
+
+def plot_regional_heatmap(region_pivots: dict[str, pd.DataFrame], region_summaries: dict[str, pd.DataFrame], output_path: Path) -> None:
+    """Хитмап выкупа по неделям и регионам."""
+    # Берем только зрелые когорты для каждого региона
+    heatmap_rows = {}
+    for region, pivot in region_pivots.items():
+        summary = region_summaries[region]
+        mature_cohorts = summary.loc[summary["fully_mature"]].index
+        mature_pivot = pivot.loc[pivot.index.isin(mature_cohorts)]
+        if not mature_pivot.empty:
+            avg_by_day = mature_pivot.mean(axis=0, skipna=True)
+            heatmap_rows[region] = avg_by_day * 100
+    
+    if not heatmap_rows:
+        return
+    
+    heatmap_df = pd.DataFrame(heatmap_rows).T
+    heatmap_df = heatmap_df.iloc[:, :31]  # До дня 30
+    
+    plt.figure(figsize=(18, 8))
+    sns.heatmap(heatmap_df, annot=True, fmt=".1f", cmap="YlGnBu", cbar_kws={"label": "Avg buyout rate, %"},
+                vmin=0, vmax=max(75, float(heatmap_df.max().max())))
+    plt.title("Средний накопительный выкуп по регионам и дням (D0–D30)")
+    plt.xlabel("Days after order")
+    plt.ylabel("Region")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close()
+
+
 def plot_final_buyout(summary: pd.DataFrame, output_path: Path, title: str) -> pd.DataFrame:
     plot_df = summary.copy().sort_index()
     mature_df = plot_df.loc[plot_df["fully_mature"]].copy()
@@ -325,11 +423,104 @@ def plot_final_buyout(summary: pd.DataFrame, output_path: Path, title: str) -> p
     return mature_df
 
 
+def plot_regional_daily_comparison(region_series: dict[str, pd.Series], output_path: Path) -> None:
+    """Сравнительные кривые среднего выкупа по топ регионам."""
+    if not region_series:
+        return
+
+    plt.figure(figsize=(14, 7))
+    colors = plt.cm.tab10(np.linspace(0, 1, len(region_series)))
+    
+    for i, (region, curve) in enumerate(sorted(region_series.items())):
+        curve_clean = curve.dropna().sort_index()
+        plt.plot(curve_clean.index, curve_clean.values * 100, marker="o", linewidth=2.5, label=region, color=colors[i])
+    
+    for day in KEY_DAYS:
+        plt.axvline(day, color="gray", linestyle=":", linewidth=1, alpha=0.5)
+    
+    plt.title("Накопительный выкуп: сравнение региональных когорт")
+    plt.xlabel("Days after order")
+    plt.ylabel("Cumulative buyout rate, %")
+    plt.xlim(0, MAX_DAY)
+    plt.ylim(bottom=0)
+    plt.grid(alpha=0.25)
+    plt.legend(title="Регион", fontsize=10)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close()
+
+
+def plot_regional_final_buyout_comparison(regions_data: dict[str, pd.DataFrame], output_path: Path) -> None:
+    """Сравнение финальных выкупов по регионам как столбчатая диаграмма."""
+    final_rates = {}
+    region_orders = {}
+    
+    for region, summary in regions_data.items():
+        mature = summary.loc[summary["fully_mature"]]
+        if not mature.empty:
+            avg_rate = mature[f"buyout_rate_day_{MAX_DAY}"].mean()
+            final_rates[region] = avg_rate * 100
+            region_orders[region] = int(mature["orders_total"].sum())
+    
+    if not final_rates:
+        return
+    
+    regions = sorted(final_rates.keys(), key=lambda x: final_rates[x], reverse=True)
+    rates = [final_rates[r] for r in regions]
+    
+    plt.figure(figsize=(14, 7))
+    bars = plt.bar(regions, rates, color=plt.cm.Spectral(np.linspace(0.2, 0.8, len(regions))))
+    plt.axhline(np.mean(rates), color="black", linestyle="--", linewidth=1.5, label=f"Среднее: {np.mean(rates):.1f}%")
+    
+    for i, (region, rate) in enumerate(zip(regions, rates)):
+        plt.text(i, rate + 1, f"{rate:.1f}%\n({region_orders.get(region, 0):,})", 
+                ha="center", va="bottom", fontsize=9)
+    
+    plt.title(f"Финальный buyout rate по регионам (D{MAX_DAY}, только зрелые когорты)")
+    plt.ylabel(f"Buyout rate, %")
+    plt.xticks(rotation=45, ha="right")
+    plt.grid(axis="y", alpha=0.25)
+    plt.legend(loc="upper right")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close()
+
+
+def plot_regional_heatmap(region_pivots: dict[str, pd.DataFrame], region_summaries: dict[str, pd.DataFrame], output_path: Path) -> None:
+    """Хитмап выкупа по неделям и регионам."""
+    # Берем только зрелые когорты для каждого региона
+    heatmap_rows = {}
+    for region, pivot in region_pivots.items():
+        summary = region_summaries[region]
+        mature_cohorts = summary.loc[summary["fully_mature"]].index
+        mature_pivot = pivot.loc[pivot.index.isin(mature_cohorts)]
+        if not mature_pivot.empty:
+            avg_by_day = mature_pivot.mean(axis=0, skipna=True)
+            heatmap_rows[region] = avg_by_day * 100
+    
+    if not heatmap_rows:
+        return
+    
+    heatmap_df = pd.DataFrame(heatmap_rows).T
+    heatmap_df = heatmap_df.iloc[:, :31]  # До дня 30
+    
+    plt.figure(figsize=(18, 8))
+    sns.heatmap(heatmap_df, annot=True, fmt=".1f", cmap="YlGnBu", cbar_kws={"label": "Avg buyout rate, %"},
+                vmin=0, vmax=max(75, float(heatmap_df.max().max())))
+    plt.title("Средний накопительный выкуп по регионам и дням (D0–D30)")
+    plt.xlabel("Days after order")
+    plt.ylabel("Region")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close()
+
+
 def build_summary_report(
     meta: dict[str, object],
     weekly_summary: pd.DataFrame,
     monthly_summary: pd.DataFrame,
     avg_curve: pd.Series,
+    regional_data: dict[str, dict[str, object]] | None = None,
 ) -> str:
     def fmt_pct(v: float | int | np.floating | None) -> str:
         if v is None or pd.isna(v):
@@ -397,6 +588,14 @@ def build_summary_report(
     top_weekly = mature_weekly.nlargest(5, f"buyout_rate_day_{MAX_DAY}")
     bottom_weekly = mature_weekly.nsmallest(5, f"buyout_rate_day_{MAX_DAY}")
 
+    regional_section = ""
+    if regional_data:
+        regional_section = "\n\n## 7) Анализ по регионам (топ 10)\n"
+        for region, data in sorted(regional_data.items(), key=lambda x: x[1].get("avg_buyout_rate", 0), reverse=True):
+            best_rate = data["best_buyout_rate"]
+            avg_rate = data["avg_buyout_rate"]
+            regional_section += f"\n**{region}**: среднее {fmt_pct(avg_rate)}, максимум {fmt_pct(best_rate)} (заказов: {fmt_int(data['total_orders'])})"
+
     lines = [
         "# Когортный анализ выкупа",
         "",
@@ -446,6 +645,8 @@ def build_summary_report(
         f"- После D{MAX_DAY} кривая выходит на зрелый уровень.",
         f"- Заметный разброс между когортами указывает на то, что на следующем этапе стоит проверить влияние доставки, региона и менеджера.",
         "",
+        regional_section,
+        "",
         "## 6) Сформированные файлы",
         "",
         "- `cohort_analysis_data.xlsx` (один файл с 4 листами):",
@@ -458,6 +659,9 @@ def build_summary_report(
         "- `cohort_sizes_weekly.png`",
         "- `final_buyout_rate_weekly.png`",
         "- `final_buyout_rate_monthly.png`",
+        "- `regional_curves_comparison.png` (накопительный выкуп по топ-10 регионам)",
+        "- `regional_final_buyout_comparison.png` (сравнение финальных выкупов)",
+        "- `regional_heatmap_by_days.png` (хитмап выкупа по неделям и регионам)",
     ]
 
     return "\n".join(lines)
@@ -485,6 +689,43 @@ def main() -> None:
     plot_final_buyout(weekly_summary, CHARTS_DIR / "final_buyout_rate_weekly.png", f"Финальный buyout rate по недельным когортам (D{MAX_DAY}, только зрелые когорты)")
     plot_final_buyout(monthly_summary, CHARTS_DIR / "final_buyout_rate_monthly.png", f"Обзорный месячный buyout rate (D{MAX_DAY}, только зрелые когорты)")
 
+    # Региональный анализ
+    print("\nBuilding regional analysis...")
+    top_regions = get_top_regions(df, n=10)
+    region_pivots: dict[str, pd.DataFrame] = {}
+    region_summaries: dict[str, pd.DataFrame] = {}
+    region_avg_curves: dict[str, pd.Series] = {}
+    regional_data: dict[str, dict[str, object]] = {}
+
+    for region in top_regions:
+        region_df = df[df["lead_region"] == region].copy()
+        if len(region_df) > 0:
+            _, region_pivot, region_summary = build_cohort_metrics(region_df, "cohort_week", MAX_DAY)
+            region_pivots[region] = region_pivot
+            region_summaries[region] = region_summary
+            
+            # Получаем среднюю кривую для региона
+            mature_cohorts = region_summary.loc[region_summary["fully_mature"]]
+            if len(mature_cohorts) > 0:
+                region_avg_curve = region_pivot.loc[region_pivot.index.isin(mature_cohorts.index)].mean(axis=0, skipna=True)
+            else:
+                region_avg_curve = region_pivot.mean(axis=0, skipna=True)
+            region_avg_curves[region] = region_avg_curve
+            
+            # Собираем статистику для отчета
+            regional_data[region] = {
+                "total_orders": int(len(region_df)),
+                "buyout_orders": int(region_df["buyout_event_date"].notna().sum()),
+                "avg_buyout_rate": float(region_pivot.mean().mean()) if region_pivot.size > 0 else 0.0,
+                "best_buyout_rate": float(region_pivot.max().max()) if region_pivot.size > 0 else 0.0,
+            }
+
+    # Создаем региональные графики
+    if region_avg_curves:
+        plot_regional_daily_comparison(region_avg_curves, CHARTS_DIR / "regional_curves_comparison.png")
+        plot_regional_final_buyout_comparison(region_summaries, CHARTS_DIR / "regional_final_buyout_comparison.png")
+        plot_regional_heatmap(region_pivots, region_summaries, CHARTS_DIR / "regional_heatmap_by_days.png")
+
     # Сохраняем все таблицы в один Excel файл с несколькими листами
     with pd.ExcelWriter(OUTPUT_DIR / "cohort_analysis_data.xlsx", engine="openpyxl") as writer:
         weekly_long.to_excel(writer, sheet_name="Метрики по неделям", index=False, float_format="%.6f")
@@ -492,7 +733,7 @@ def main() -> None:
         monthly_summary.to_excel(writer, sheet_name="Итоги по месяцам", float_format="%.6f")
         weekly_pivot.to_excel(writer, sheet_name="Накопительный выкуп", float_format="%.6f")
 
-    summary_text = build_summary_report(meta, weekly_summary, monthly_summary, avg_curve)
+    summary_text = build_summary_report(meta, weekly_summary, monthly_summary, avg_curve, regional_data if regional_data else None)
     (OUTPUT_DIR / "summary.md").write_text(summary_text, encoding="utf-8")
 
     print(summary_text)
@@ -505,8 +746,12 @@ def main() -> None:
         CHARTS_DIR / "cohort_sizes_weekly.png",
         CHARTS_DIR / "final_buyout_rate_weekly.png",
         CHARTS_DIR / "final_buyout_rate_monthly.png",
+        CHARTS_DIR / "regional_curves_comparison.png",
+        CHARTS_DIR / "regional_final_buyout_comparison.png",
+        CHARTS_DIR / "regional_heatmap_by_days.png",
     ]:
-        print(f"- {path}")
+        if path.exists():
+            print(f"- {path}")
 
 
 if __name__ == "__main__":
