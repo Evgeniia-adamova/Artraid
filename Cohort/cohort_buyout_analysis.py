@@ -190,17 +190,27 @@ def build_cohort_metrics(df: pd.DataFrame, cohort_col: str, max_day: int = MAX_D
     return long_df, pivot, summary
 
 
-def select_line_cohorts(summary: pd.DataFrame) -> list[pd.Timestamp]:
+def select_line_cohorts(summary: pd.DataFrame, skip_first: int = 1) -> list[pd.Timestamp]:
     mature = summary.loc[summary["fully_mature"]].sort_index()
     if mature.empty:
         return list(summary.sort_index().tail(min(8, len(summary))).index)
 
-    chosen = list(mature.head(LINE_COHORTS_PER_SIDE).index) + list(mature.tail(LINE_COHORTS_PER_SIDE).index)
-    selected: list[pd.Timestamp] = []
-    for cohort in chosen:
-        if cohort not in selected:
-            selected.append(cohort)
-    return selected
+    mature_sorted = list(mature.index)
+    
+    # Пропускаем первые skip_first когорт (часто в них мало данных)
+    early_start = min(skip_first, len(mature_sorted) - LINE_COHORTS_PER_SIDE)
+    early_cohorts = mature_sorted[early_start:early_start+LINE_COHORTS_PER_SIDE]
+    
+    # Выбираем поздние когорты
+    late_cohorts = mature_sorted[-LINE_COHORTS_PER_SIDE:]
+    
+    # Объединяем и убираем дубликаты
+    selected = early_cohorts + late_cohorts
+    result = []
+    for cohort in selected:
+        if cohort not in result:
+            result.append(cohort)
+    return result
 
 
 def get_top_regions(df: pd.DataFrame, n: int = 10) -> list[str]:
@@ -231,6 +241,36 @@ def plot_heatmap(cohort_pivot: pd.DataFrame, output_path: Path) -> None:
         vmax=max(75, float(np.nanmax(heatmap_pct.values)) if np.isfinite(np.nanmax(heatmap_pct.values)) else 75),
     )
     ax.set_title("Недельные когорты: накопительный выкуп по дням (последние недели, D0–D30)", pad=14)
+    ax.set_xlabel("Days after order")
+    ax.set_ylabel("Cohort week start")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close()
+
+
+def plot_heatmap_first(cohort_pivot: pd.DataFrame, output_path: Path) -> None:
+    heatmap_data = cohort_pivot.head(HEATMAP_WEEKS).copy()
+    if heatmap_data.empty:
+        return
+
+    heatmap_pct = (heatmap_data * 100).round(1)
+    heatmap_pct.index = heatmap_pct.index.strftime("%Y-%m-%d")
+
+    plt.figure(figsize=(20, max(10, 0.4 * len(heatmap_pct))))
+    ax = sns.heatmap(
+        heatmap_pct,
+        mask=heatmap_pct.isna(),
+        annot=True,
+        fmt=".1f",
+        cmap="YlGnBu",
+        linewidths=0.1,
+        linecolor="white",
+        cbar_kws={"label": "Cumulative buyout rate, %"},
+        annot_kws={"size": 11},
+        vmin=0,
+        vmax=max(75, float(np.nanmax(heatmap_pct.values)) if np.isfinite(np.nanmax(heatmap_pct.values)) else 75),
+    )
+    ax.set_title("Недельные когорты: накопительный выкуп по дням (первые недели, D0–D30)", pad=14)
     ax.set_xlabel("Days after order")
     ax.set_ylabel("Cohort week start")
     plt.tight_layout()
@@ -654,7 +694,8 @@ def build_summary_report(
         "  - Лист 2: Итоги по неделям",
         "  - Лист 3: Итоги по месяцам",
         "  - Лист 4: Накопительный выкуп",
-        "- `cohort_heatmap_weekly_d30.png`",
+        "- `cohort_heatmap_weekly_d30.png` (последние недели)",
+        "- `cohort_heatmap_weekly_d30_first.png` (первые недели)",
         "- `cohort_curves_weekly_selected.png`",
         "- `cohort_sizes_weekly.png`",
         "- `final_buyout_rate_weekly.png`",
@@ -682,9 +723,10 @@ def main() -> None:
     weekly_long, weekly_pivot, weekly_summary = build_cohort_metrics(df, "cohort_week", MAX_DAY)
     monthly_long, monthly_pivot, monthly_summary = build_cohort_metrics(df, "cohort_month", MAX_DAY)
 
-    selected_cohorts = select_line_cohorts(weekly_summary)
+    selected_cohorts = select_line_cohorts(weekly_summary, skip_first=3)
     avg_curve = plot_curves(weekly_pivot, selected_cohorts, CHARTS_DIR / "cohort_curves_weekly_selected.png")
     plot_heatmap(weekly_pivot, CHARTS_DIR / "cohort_heatmap_weekly_d30.png")
+    plot_heatmap_first(weekly_pivot, CHARTS_DIR / "cohort_heatmap_weekly_d30_first.png")
     plot_cohort_sizes(weekly_summary, CHARTS_DIR / "cohort_sizes_weekly.png", "Размер недельных когорт по sale_date")
     plot_final_buyout(weekly_summary, CHARTS_DIR / "final_buyout_rate_weekly.png", f"Финальный buyout rate по недельным когортам (D{MAX_DAY}, только зрелые когорты)")
     plot_final_buyout(monthly_summary, CHARTS_DIR / "final_buyout_rate_monthly.png", f"Обзорный месячный buyout rate (D{MAX_DAY}, только зрелые когорты)")
@@ -742,6 +784,7 @@ def main() -> None:
         OUTPUT_DIR / "cohort_analysis_data.xlsx",
         OUTPUT_DIR / "summary.md",
         CHARTS_DIR / "cohort_heatmap_weekly_d30.png",
+        CHARTS_DIR / "cohort_heatmap_weekly_d30_first.png",
         CHARTS_DIR / "cohort_curves_weekly_selected.png",
         CHARTS_DIR / "cohort_sizes_weekly.png",
         CHARTS_DIR / "final_buyout_rate_weekly.png",
