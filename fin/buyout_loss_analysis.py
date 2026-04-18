@@ -42,8 +42,11 @@ plt.rcParams.update({
     "font.family": "sans-serif",
     "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
     "figure.facecolor": BG,
+    "axes.labelsize": 16,  # подписи осей
     "axes.facecolor": BG,
     "axes.labelcolor": TEXT,
+    "xtick.labelsize": 14,  # цифры на оси X
+    "ytick.labelsize": 14,  # цифры на оси Y
     "xtick.color": TEXT,
     "ytick.color": TEXT,
     "text.color": TEXT,
@@ -310,6 +313,8 @@ ax1.grid(axis="x", alpha=0.25)
 fig.tight_layout()
 fig.savefig(f"{results_folder}/01_region_loss_01_total_without_title.png", dpi=300, bbox_inches="tight")
 plt.close(fig)
+
+
 
 # 2) % невыкупа
 fig, ax2 = plt.subplots(figsize=(12, 7))
