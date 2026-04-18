@@ -6,9 +6,40 @@ from typing import Iterable
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 import seaborn as sns
+
+# Палитра Артрейд
+# ──────────────────────────────────────────────
+DARK       = "#1B1B2F"
+TEXT       = "#3D3D5C"
+GRAY       = "#8E8EA0"
+LIGHT      = "#F0F2F5"
+BG         = "#FFFFFF"
+RED        = "#C0392B"
+ORANGE     = "#E67E22"
+
+GRADIENT_POOL = ["#0B2545", "#134074", "#13678A", "#1B9AAA", "#45B7D1", "#73C2D4", "#AED9E0"]
+
+ARTRAID_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "artraid", ["#FFFFFF", "#AED9E0", "#45B7D1", "#1B9AAA", "#13678A", "#134074", "#0B2545"]
+)
+
+EARLY_COLORS = ["#AED9E0", "#73C2D4", "#45B7D1", "#1B9AAA", "#13678A", "#134074"]
+LATE_COLORS  = ["#F5B7B1", "#F1948A", "#E74C3C", "#C0392B", "#A93226", "#922B21"]
+
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+    "figure.facecolor": BG,
+    "axes.facecolor": BG,
+    "axes.labelcolor": TEXT,
+    "xtick.color": TEXT,
+    "ytick.color": TEXT,
+    "text.color": TEXT,
+})
 
 MAX_DAY = 30
 HEATMAP_WEEKS = 36
@@ -27,6 +58,7 @@ REQUIRED_COLUMNS = [
     "rejected_ts",
     "returned_ts",
     "lead_region",
+    "lead_source_category"
 ]
 DATE_COLUMNS = ["sale_date", "received_ts", "rejected_ts", "returned_ts"]
 BUSINESS_KEY_CANDIDATES = ["lead_id", "order_id", "lead_Номер заказа на сайте"]
@@ -232,17 +264,24 @@ def plot_heatmap(cohort_pivot: pd.DataFrame, output_path: Path) -> None:
         mask=heatmap_pct.isna(),
         annot=True,
         fmt=".1f",
-        cmap="YlGnBu",
-        linewidths=0.1,
-        linecolor="white",
+        cmap=ARTRAID_CMAP,
+        linewidths=0.3,
+        linecolor=LIGHT,
         cbar_kws={"label": "Cumulative buyout rate, %"},
-        annot_kws={"size": 11},
+        annot_kws={"size": 10, "color": LIGHT},
         vmin=0,
         vmax=max(75, float(np.nanmax(heatmap_pct.values)) if np.isfinite(np.nanmax(heatmap_pct.values)) else 75),
     )
-    ax.set_title("Недельные когорты: накопительный выкуп по дням (последние недели, D0–D30)", pad=14)
-    ax.set_xlabel("Days after order")
-    ax.set_ylabel("Cohort week start")
+
+    ax.set_title("Недельные когорты: накопительный выкуп по дням (последние недели, D0–D30)",
+                 fontsize=16,
+                 fontweight="bold",
+                 color=DARK,
+                 pad=16)
+    ax.set_xlabel("Days after order", fontsize=12, color=TEXT)
+    ax.set_ylabel("Cohort week start", fontsize=12, color=TEXT)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
     plt.tight_layout()
     plt.savefig(output_path, dpi=220, bbox_inches="tight")
     plt.close()
@@ -262,17 +301,24 @@ def plot_heatmap_first(cohort_pivot: pd.DataFrame, output_path: Path) -> None:
         mask=heatmap_pct.isna(),
         annot=True,
         fmt=".1f",
-        cmap="YlGnBu",
-        linewidths=0.1,
-        linecolor="white",
+        cmap=ARTRAID_CMAP,
+        linewidths=0.3,
+        linecolor=LIGHT,
         cbar_kws={"label": "Cumulative buyout rate, %"},
-        annot_kws={"size": 11},
+        annot_kws={"size": 10, "color": LIGHT},
         vmin=0,
         vmax=max(75, float(np.nanmax(heatmap_pct.values)) if np.isfinite(np.nanmax(heatmap_pct.values)) else 75),
     )
-    ax.set_title("Недельные когорты: накопительный выкуп по дням (первые недели, D0–D30)", pad=14)
-    ax.set_xlabel("Days after order")
-    ax.set_ylabel("Cohort week start")
+
+    ax.set_title("Недельные когорты: накопительный выкуп по дням (первые недели, D0–D30)",
+                 fontsize=16,
+                 fontweight="bold",
+                 color=DARK,
+                 pad=16)
+    ax.set_xlabel("Days after order", fontsize=12, color=TEXT)
+    ax.set_ylabel("Cohort week start", fontsize=12, color=TEXT)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
     plt.tight_layout()
     plt.savefig(output_path, dpi=220, bbox_inches="tight")
     plt.close()
@@ -305,7 +351,7 @@ def plot_curves(cohort_pivot: pd.DataFrame, selected_cohorts: list[pd.Timestamp]
         row = cohort_pivot.loc[cohort_date]
         plt.plot(row.index, row.values * 100, marker="o", linewidth=2, label=cohort_date.strftime("%Y-%m-%d"), color=late_colors[i])
 
-    plt.plot(avg_curve.index, avg_curve.values * 100, linestyle="--", linewidth=3, color="black", label="Средняя по всем когортам")
+    plt.plot(avg_curve.index, avg_curve.values * 100, linestyle="--", linewidth=3, color=DARK, label="Средняя по всем когортам")
     for day in KEY_DAYS:
         plt.axvline(day, color="gray", linestyle=":", linewidth=1)
 
@@ -324,17 +370,36 @@ def plot_curves(cohort_pivot: pd.DataFrame, selected_cohorts: list[pd.Timestamp]
 
 def plot_cohort_sizes(summary: pd.DataFrame, output_path: Path, title: str) -> None:
     labels = [idx.strftime("%Y-%m-%d") for idx in summary.index]
-    plt.figure(figsize=(14, 6))
-    plt.bar(labels, summary["orders_total"], color="#4c78a8")
-    plt.title(title)
-    plt.xlabel("Cohort")
-    plt.ylabel("Orders count")
-    plt.xticks(rotation=70, ha="right")
-    plt.grid(axis="y", alpha=0.25)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=220, bbox_inches="tight")
-    plt.close()
+    sizes = summary["orders_total"].values
+    n = len(labels)
 
+    bar_colors = [GRADIENT_POOL[int(i)] for i in np.linspace(0, len(GRADIENT_POOL)-1, n)]
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+
+    ax.bar(labels, sizes, color=bar_colors, edgecolor=BG, linewidth=0.5)
+
+    ax.set_title(title, fontsize=16, fontweight="bold", color=DARK, pad=16)
+    ax.set_xlabel("Когорта", fontsize=12, color=TEXT)
+    ax.set_ylabel("Количество заказов", fontsize=12, color=TEXT)
+
+    # Показываем каждую 4-ю подпись, чтобы не было каши
+    plt.xticks(rotation=70, ha="right")
+    for i, label in enumerate(ax.get_xticklabels()):
+        if i % 4 != 0:
+            label.set_visible(False)
+
+    ax.grid(axis="y", alpha=0.15, color=GRAY)
+
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    ax.spines["left"].set_color(LIGHT)
+    ax.spines["bottom"].set_color(LIGHT)
+    ax.tick_params(colors=TEXT)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight", facecolor=BG)
+    plt.close()
 
 def plot_regional_daily_comparison(region_series: dict[str, pd.Series], output_path: Path) -> None:
     """Сравнительные кривые среднего выкупа по топ регионам."""
@@ -383,7 +448,7 @@ def plot_regional_final_buyout_comparison(regions_data: dict[str, pd.DataFrame],
     
     plt.figure(figsize=(14, 7))
     bars = plt.bar(regions, rates, color=plt.cm.Spectral(np.linspace(0.2, 0.8, len(regions))))
-    plt.axhline(np.mean(rates), color="black", linestyle="--", linewidth=1.5, label=f"Среднее: {np.mean(rates):.1f}%")
+    plt.axhline(np.mean(rates), color=DARK, linestyle="--", linewidth=1.5, label=f"Среднее: {np.mean(rates):.1f}%")
     
     for i, (region, rate) in enumerate(zip(regions, rates)):
         plt.text(i, rate + 1, f"{rate:.1f}%\n({region_orders.get(region, 0):,})", 
@@ -418,11 +483,24 @@ def plot_regional_heatmap(region_pivots: dict[str, pd.DataFrame], region_summari
     heatmap_df = heatmap_df.iloc[:, :31]  # До дня 30
     
     plt.figure(figsize=(18, 8))
-    sns.heatmap(heatmap_df, annot=True, fmt=".1f", cmap="YlGnBu", cbar_kws={"label": "Avg buyout rate, %"},
+    sns.heatmap(heatmap_df,
+                annot=True,
+                fmt=".1f",
+                cmap=ARTRAID_CMAP,
+                linewidths=0.3,
+                linecolor=LIGHT,
+                cbar_kws={"label": "Avg buyout rate, %"},
+                annot_kws={"size": 10, "color": LIGHT},
                 vmin=0, vmax=max(75, float(heatmap_df.max().max())))
-    plt.title("Средний накопительный выкуп по регионам и дням (D0–D30)")
-    plt.xlabel("Days after order")
-    plt.ylabel("Region")
+    plt.title("Средний накопительный выкуп по регионам и дням (D0–D30)",
+              fontsize=16,
+              fontweight="bold",
+              color=DARK,
+              pad=16)
+    plt.xlabel("Days after order", fontsize=12, color=TEXT)
+    plt.ylabel("Region", fontsize=12, color=TEXT)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
     plt.tight_layout()
     plt.savefig(output_path, dpi=220, bbox_inches="tight")
     plt.close()
@@ -442,25 +520,42 @@ def plot_final_buyout(summary: pd.DataFrame, output_path: Path, title: str) -> p
     colors = []
     for value in mature_df["buyout_pct"]:
         if value >= q3:
-            colors.append("#2b8cbe")
+            colors.append("#134074")
         elif value <= q1:
-            colors.append("#de2d26")
+            colors.append(RED)
         else:
-            colors.append("#9ecae1")
+            colors.append("#45B7D1")
 
-    plt.figure(figsize=(14, 6.5))
-    plt.bar(labels, mature_df["buyout_pct"], color=colors)
-    plt.axhline(mature_df["buyout_pct"].mean(), color="black", linestyle="--", linewidth=1.5, label=f"Среднее: {mature_df['buyout_pct'].mean():.1f}%")
-    plt.title(title)
-    plt.xlabel("Cohort")
-    plt.ylabel(f"Buyout rate by D{MAX_DAY}, %")
+    fig, ax = plt.subplots(figsize=(14, 6.5))
+
+    ax.bar(labels, mature_df["buyout_pct"], color=colors, edgecolor=BG, linewidth=0.5)
+
+    ax.axhline(
+        mature_df["buyout_pct"].mean(),
+        color=DARK, linestyle="--", linewidth=1.5,
+        label=f"Среднее: {mature_df['buyout_pct'].mean():.1f}%"
+    )
+
+    ax.set_title(title, fontsize=16, fontweight="bold", color=DARK, pad=16)
+    ax.set_xlabel("Когорта", fontsize=12, color=TEXT)
+    ax.set_ylabel(f"Buyout rate к D{MAX_DAY}, %", fontsize=12, color=TEXT)
+
     plt.xticks(rotation=70, ha="right")
-    plt.grid(axis="y", alpha=0.25)
-    plt.legend(loc="upper right")
+
+    ax.grid(axis="y", alpha=0.15, color=GRAY)
+    ax.legend(loc="upper right", fontsize=10)
+
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    ax.spines["left"].set_color(LIGHT)
+    ax.spines["bottom"].set_color(LIGHT)
+    ax.tick_params(colors=TEXT)
+
     plt.tight_layout()
-    plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.savefig(output_path, dpi=220, bbox_inches="tight", facecolor=BG)
     plt.close()
     return mature_df
+
 
 
 def plot_regional_daily_comparison(region_series: dict[str, pd.Series], output_path: Path) -> None:
@@ -468,27 +563,59 @@ def plot_regional_daily_comparison(region_series: dict[str, pd.Series], output_p
     if not region_series:
         return
 
-    plt.figure(figsize=(14, 7))
-    colors = plt.cm.tab10(np.linspace(0, 1, len(region_series)))
-    
+    # Расширенная палитра для 10+ линий — контрастные цвета
+    REGIONAL_COLORS = [
+        "#0B2545",  # тёмно-синий
+        "#1B9AAA",  # бирюзовый
+        "#C0392B",  # красный
+        "#E67E22",  # оранжевый
+        "#2D936C",  # зелёный
+        "#7D3C98",  # фиолетовый
+        "#45B7D1",  # светло-бирюзовый
+        "#D4AC0D",  # золотой
+        "#134074",  # средне-синий
+        "#A93226",  # тёмно-красный
+        "#1E8449",  # тёмно-зелёный
+        "#6C3483",  # тёмно-фиолетовый
+    ]
+
+    n = len(region_series)
+    colors = REGIONAL_COLORS[:n]
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+
     for i, (region, curve) in enumerate(sorted(region_series.items())):
         curve_clean = curve.dropna().sort_index()
-        plt.plot(curve_clean.index, curve_clean.values * 100, marker="o", linewidth=2.5, label=region, color=colors[i])
-    
-    for day in KEY_DAYS:
-        plt.axvline(day, color="gray", linestyle=":", linewidth=1, alpha=0.5)
-    
-    plt.title("Накопительный выкуп: сравнение региональных когорт")
-    plt.xlabel("Days after order")
-    plt.ylabel("Cumulative buyout rate, %")
-    plt.xlim(0, MAX_DAY)
-    plt.ylim(bottom=0)
-    plt.grid(alpha=0.25)
-    plt.legend(title="Регион", fontsize=10)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=220, bbox_inches="tight")
-    plt.close()
+        ax.plot(
+            curve_clean.index, curve_clean.values * 100,
+            marker="o", markersize=4, linewidth=2.5,
+            label=region, color=colors[i]
+        )
 
+    for day in KEY_DAYS:
+        ax.axvline(day, color=GRAY, linestyle=":", linewidth=1, alpha=0.5)
+
+    ax.set_title(
+        "Накопительный выкуп: сравнение региональных когорт",
+        fontsize=16, fontweight="bold", color=DARK, pad=16
+    )
+    ax.set_xlabel("Дней после заказа", fontsize=12, color=TEXT)
+    ax.set_ylabel("Накопительный выкуп, %", fontsize=12, color=TEXT)
+    ax.set_xlim(0, MAX_DAY)
+    ax.set_ylim(bottom=0)
+
+    ax.grid(alpha=0.15, color=GRAY)
+    ax.legend(title="Регион", fontsize=10, title_fontsize=11)
+
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    ax.spines["left"].set_color(LIGHT)
+    ax.spines["bottom"].set_color(LIGHT)
+    ax.tick_params(colors=TEXT)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight", facecolor=BG)
+    plt.close()
 
 def plot_regional_final_buyout_comparison(regions_data: dict[str, pd.DataFrame], output_path: Path) -> None:
     """Сравнение финальных выкупов по регионам как столбчатая диаграмма."""
@@ -507,24 +634,41 @@ def plot_regional_final_buyout_comparison(regions_data: dict[str, pd.DataFrame],
     
     regions = sorted(final_rates.keys(), key=lambda x: final_rates[x], reverse=True)
     rates = [final_rates[r] for r in regions]
-    
-    plt.figure(figsize=(14, 7))
-    bars = plt.bar(regions, rates, color=plt.cm.Spectral(np.linspace(0.2, 0.8, len(regions))))
-    plt.axhline(np.mean(rates), color="black", linestyle="--", linewidth=1.5, label=f"Среднее: {np.mean(rates):.1f}%")
-    
-    for i, (region, rate) in enumerate(zip(regions, rates)):
-        plt.text(i, rate + 1, f"{rate:.1f}%\n({region_orders.get(region, 0):,})", 
-                ha="center", va="bottom", fontsize=9)
-    
-    plt.title(f"Финальный buyout rate по регионам (D{MAX_DAY}, только зрелые когорты)")
-    plt.ylabel(f"Buyout rate, %")
-    plt.xticks(rotation=45, ha="right")
-    plt.grid(axis="y", alpha=0.25)
-    plt.legend(loc="upper right")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=220, bbox_inches="tight")
-    plt.close()
 
+    n = len(regions)
+    bar_colors = [GRADIENT_POOL[int(i)] for i in np.linspace(0, len(GRADIENT_POOL) - 1, n)]
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    ax.bar(regions, rates, color=bar_colors, edgecolor=BG, linewidth=0.5)
+
+    ax.axhline(
+        np.mean(rates),
+        color=DARK, linestyle="--", linewidth=1.5,
+        label=f"Среднее: {np.mean(rates):.1f}%"
+    )
+
+    ax.set_title(
+        "Сравнение финального buyout rate по регионам",
+        fontsize=16, fontweight="bold", color=DARK, pad=16
+    )
+    ax.set_xlabel("Регион", fontsize=12, color=TEXT)
+    ax.set_ylabel(f"Buyout rate к D{MAX_DAY}, %", fontsize=12, color=TEXT)
+
+    plt.xticks(rotation=70, ha="right")
+
+    ax.grid(axis="y", alpha=0.15, color=GRAY)
+    ax.legend(loc="upper right", fontsize=10)
+
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    ax.spines["left"].set_color(LIGHT)
+    ax.spines["bottom"].set_color(LIGHT)
+    ax.tick_params(colors=TEXT)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight", facecolor=BG)
+    plt.close()
 
 def plot_regional_heatmap(region_pivots: dict[str, pd.DataFrame], region_summaries: dict[str, pd.DataFrame], output_path: Path) -> None:
     """Хитмап выкупа по неделям и регионам."""
@@ -545,13 +689,93 @@ def plot_regional_heatmap(region_pivots: dict[str, pd.DataFrame], region_summari
     heatmap_df = heatmap_df.iloc[:, :31]  # До дня 30
     
     plt.figure(figsize=(18, 8))
-    sns.heatmap(heatmap_df, annot=True, fmt=".1f", cmap="YlGnBu", cbar_kws={"label": "Avg buyout rate, %"},
+    sns.heatmap(heatmap_df,
+                annot=True,
+                fmt=".1f",
+                cmap=ARTRAID_CMAP,
+                linewidths=0.3,
+                linecolor=LIGHT,
+                cbar_kws={"label": "Avg buyout rate, %"},
+                annot_kws={"size": 10, "color": LIGHT},
                 vmin=0, vmax=max(75, float(heatmap_df.max().max())))
+
     plt.title("Средний накопительный выкуп по регионам и дням (D0–D30)")
     plt.xlabel("Days after order")
     plt.ylabel("Region")
     plt.tight_layout()
     plt.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close()
+
+# Тепловая карта: источник лида х месяц продажи
+def plot_source_month_heatmap(df: pd.DataFrame, output_path: Path,
+                               min_orders: int = 500) -> None:
+    """Тепловая карта: источник лида × месяц продажи."""
+    df_cohort = df.copy()
+    df_cohort["sale_month"] = df_cohort["sale_date"].dt.to_period("M").astype(str)
+
+    cohort = (
+        df_cohort.groupby(["lead_source_category", "sale_month"])
+        .agg(
+            buyout_count=("is_buyout", "sum"),
+            total_count=("is_buyout", "count")
+        )
+        .reset_index()
+    )
+
+    cohort["buyout_rate_pct"] = (
+        cohort["buyout_count"] / cohort["total_count"] * 100
+    ).round(1)
+
+    pivot = cohort.pivot(
+        index="lead_source_category",
+        columns="sale_month",
+        values="buyout_rate_pct"
+    ).sort_index(axis=1)
+
+    # Фильтруем источники с достаточным объёмом
+    total_by_source = cohort.groupby("lead_source_category")["total_count"].sum()
+    valid_sources = total_by_source[total_by_source >= min_orders].sort_values(ascending=False).index
+    pivot = pivot.loc[valid_sources]
+
+    if pivot.empty:
+        return
+
+    flat = pivot.values.flatten()
+    flat = flat[~np.isnan(flat)]
+    if len(flat) == 0:
+        return
+    VMAX = max(75.0, float(np.max(flat)))
+    VMIN = max(0.0, float(np.min(flat)) * 0.9)
+
+    fig, ax = plt.subplots(figsize=(max(12, len(pivot.columns) * 0.9),
+                                     max(4, len(pivot) * 0.8)))
+
+    sns.heatmap(
+        pivot,
+        annot=True, fmt=".1f",
+        cmap=ARTRAID_CMAP,
+        linewidths=0.3,
+        linecolor=LIGHT,
+        cbar_kws={"label": "Buyout rate, %"},
+        annot_kws={"size": 11},
+        vmin=VMIN, vmax=VMAX,
+        ax=ax,
+    )
+
+    ax.set_title(
+        "Доля выкупа: источник лида × месяц",
+        fontsize=16, fontweight="bold", color=DARK, pad=16
+    )
+    ax.set_xlabel("Месяц продажи", fontsize=12, color=TEXT)
+    ax.set_ylabel("Источник лида", fontsize=12, color=TEXT)
+    ax.tick_params(axis="x", rotation=45, labelsize=11, colors=TEXT)
+    ax.tick_params(axis="y", labelsize=11, colors=TEXT)
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=220, bbox_inches="tight", facecolor=BG)
     plt.close()
 
 
@@ -730,6 +954,12 @@ def main() -> None:
     plot_cohort_sizes(weekly_summary, CHARTS_DIR / "cohort_sizes_weekly.png", "Размер недельных когорт по sale_date")
     plot_final_buyout(weekly_summary, CHARTS_DIR / "final_buyout_rate_weekly.png", f"Финальный buyout rate по недельным когортам (D{MAX_DAY}, только зрелые когорты)")
     plot_final_buyout(monthly_summary, CHARTS_DIR / "final_buyout_rate_monthly.png", f"Обзорный месячный buyout rate (D{MAX_DAY}, только зрелые когорты)")
+    # Тепловая карта: источник × месяц
+    plot_source_month_heatmap(
+        df,
+        output_path=CHARTS_DIR / "source_month_heatmap.png",
+        min_orders=500
+    )
 
     # Региональный анализ
     print("\nBuilding regional analysis...")
@@ -791,6 +1021,7 @@ def main() -> None:
         CHARTS_DIR / "final_buyout_rate_monthly.png",
         CHARTS_DIR / "regional_curves_comparison.png",
         CHARTS_DIR / "regional_final_buyout_comparison.png",
+        CHARTS_DIR / "source_month_heatmap.png",
         CHARTS_DIR / "regional_heatmap_by_days.png",
     ]:
         if path.exists():
