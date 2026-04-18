@@ -10,6 +10,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.interpolate import make_interp_spline
 
 # Палитра Артрейд
 # ──────────────────────────────────────────────
@@ -582,23 +583,54 @@ def plot_regional_daily_comparison(region_series: dict[str, pd.Series], output_p
     n = len(region_series)
     colors = REGIONAL_COLORS[:n]
 
+    # Делаем вспомогательную функцию для создания более плавных линий на графике накопительного выкупа по регионам
+    def smooth_curve(y, n_points=300, k=3):
+        y = np.asarray(y, dtype=float)
+        x = np.arange(len(y), dtype=float)
+        if len(y) < 4:
+            return x, y
+        k = min(k, len(y) - 1)
+        spline = make_interp_spline(x, y, k=k)
+        x_new = np.linspace(x.min(), x.max(), n_points)
+        y_new = spline(x_new)
+        return x_new, y_new
+
     fig, ax = plt.subplots(figsize=(14, 7))
 
     for i, (region, curve) in enumerate(sorted(region_series.items())):
         curve_clean = curve.dropna().sort_index()
-        ax.plot(
-            curve_clean.index, curve_clean.values * 100,
-            marker="o", markersize=4, linewidth=2.5,
-            label=region, color=colors[i]
-        )
+        y = curve_clean.values * 100
+        x = np.arange(len(curve_clean))
+
+        if len(y) >= 4:
+            x_smooth, y_smooth = smooth_curve(y)
+            ax.plot(
+                x_smooth, y_smooth,
+                linewidth=2.5,
+                color=colors[i]
+            )
+            ax.plot(
+                x, y,
+                linestyle="none",
+                marker="o",
+                markersize=4,
+                color=colors[i],
+                label=region
+            )
+        else:
+            ax.plot(
+                x, y,
+                marker="o",
+                markersize=4,
+                linewidth=2.5,
+                color=colors[i],
+                label=region
+            )
 
     for day in KEY_DAYS:
         ax.axvline(day, color=GRAY, linestyle=":", linewidth=1, alpha=0.5)
 
-    ax.set_title(
-        "Накопительный выкуп: сравнение региональных когорт",
-        fontsize=16, fontweight="bold", color=DARK, pad=16
-    )
+    ax.set_title(" ")
     ax.set_xlabel("Дней после заказа", fontsize=12, color=TEXT)
     ax.set_ylabel("Накопительный выкуп, %", fontsize=12, color=TEXT)
     ax.set_xlim(0, MAX_DAY)
@@ -994,7 +1026,7 @@ def main() -> None:
 
     # Создаем региональные графики
     if region_avg_curves:
-        plot_regional_daily_comparison(region_avg_curves, CHARTS_DIR / "regional_curves_comparison.png")
+        plot_regional_daily_comparison(region_avg_curves, CHARTS_DIR / "regional_curves_comparison_without_title.png")
         plot_regional_final_buyout_comparison(region_summaries, CHARTS_DIR / "regional_final_buyout_comparison.png")
         plot_regional_heatmap(region_pivots, region_summaries, CHARTS_DIR / "regional_heatmap_by_days.png")
 
