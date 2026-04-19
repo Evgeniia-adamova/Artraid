@@ -154,6 +154,12 @@ def load_and_prepare_data(path: Path) -> tuple[pd.DataFrame, dict[str, object]]:
     # Недельные когорты с началом недели в понедельник.
     df["cohort_week"] = df["sale_date"].dt.to_period("W-SUN").apply(lambda period: period.start_time)
     df["cohort_month"] = df["sale_date"].dt.to_period("M").dt.to_timestamp()
+    
+    # Фильтруем первые 3 и последнюю недели
+    unique_weeks = sorted(df["cohort_week"].unique())
+    if len(unique_weeks) > 4:
+        valid_weeks = unique_weeks[3:-1]
+        df = df[df["cohort_week"].isin(valid_weeks)].copy()
 
     meta = {
         "rows_before": rows_before,
@@ -223,16 +229,15 @@ def build_cohort_metrics(df: pd.DataFrame, cohort_col: str, max_day: int = MAX_D
     return long_df, pivot, summary
 
 
-def select_line_cohorts(summary: pd.DataFrame, skip_first: int = 1) -> list[pd.Timestamp]:
+def select_line_cohorts(summary: pd.DataFrame) -> list[pd.Timestamp]:
     mature = summary.loc[summary["fully_mature"]].sort_index()
     if mature.empty:
         return list(summary.sort_index().tail(min(8, len(summary))).index)
 
     mature_sorted = list(mature.index)
     
-    # Пропускаем первые skip_first когорт (часто в них мало данных)
-    early_start = min(skip_first, len(mature_sorted) - LINE_COHORTS_PER_SIDE)
-    early_cohorts = mature_sorted[early_start:early_start+LINE_COHORTS_PER_SIDE]
+    # Выбираем ранние когорты
+    early_cohorts = mature_sorted[:LINE_COHORTS_PER_SIDE]
     
     # Выбираем поздние когорты
     late_cohorts = mature_sorted[-LINE_COHORTS_PER_SIDE:]
@@ -979,7 +984,7 @@ def main() -> None:
     weekly_long, weekly_pivot, weekly_summary = build_cohort_metrics(df, "cohort_week", MAX_DAY)
     monthly_long, monthly_pivot, monthly_summary = build_cohort_metrics(df, "cohort_month", MAX_DAY)
 
-    selected_cohorts = select_line_cohorts(weekly_summary, skip_first=3)
+    selected_cohorts = select_line_cohorts(weekly_summary)
     avg_curve = plot_curves(weekly_pivot, selected_cohorts, CHARTS_DIR / "cohort_curves_weekly_selected.png")
     plot_heatmap(weekly_pivot, CHARTS_DIR / "cohort_heatmap_weekly_d30.png")
     plot_heatmap_first(weekly_pivot, CHARTS_DIR / "cohort_heatmap_weekly_d30_first.png")
