@@ -1,4 +1,11 @@
 import streamlit as st
+from src.data import load_clean_data
+
+df = load_clean_data()
+
+ORDERS_COUNT = df["lead_id"].nunique()
+BUYOUT_RATE = df["buyout_flag"].mean().round(3) * 100
+NONBUYOUT_COUNT = (df["buyout_flag"] == 0).sum()
 
 # глобальные стили
 def apply_global_styles():
@@ -99,9 +106,9 @@ def render_sidebar():
         st.divider()
 
         st.markdown("### Ключевые метрики")
-        st.metric("Заказов", "16 881")
-        st.metric("Выкуп", "82.5%")
-        st.metric("Невыкуп", "2 954")
+        st.metric("Заказов", f"{ORDERS_COUNT}" )
+        st.metric("Выкуп", f"{BUYOUT_RATE}%")
+        st.metric("Невыкуп", f"{NONBUYOUT_COUNT}")
 
         st.divider()
 
