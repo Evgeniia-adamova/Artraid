@@ -4,19 +4,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from ui import setup_page, render_header, render_sidebar
+from src.data import load_clean_data
 
 setup_page("Финансовые потери и риски")
 render_sidebar()
 render_header(
     "Artraid Analytics",
-    "Решение команды Сtrl+Alt+Win"
+    "Финансовые потери и риски"
 )
 # 0. Загрузка данных
-@st.cache_data
-def load_data():
-    return pd.read_excel("data_preparation/data/clean/clean_data.xlsx")
-
-df = load_data()
+df = load_clean_data()
 
 st.markdown("## Потери от невыкупа и риски")
 

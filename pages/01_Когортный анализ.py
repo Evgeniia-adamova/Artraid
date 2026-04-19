@@ -2,19 +2,16 @@ import streamlit as st
 import pandas as pd
 
 from ui import setup_page, render_header, render_sidebar
+from src.data import load_clean_data
 
 setup_page("Когортный анализ")
 render_sidebar()
 render_header(
     "Artraid Analytics",
-    "Решение команды Сtrl+Alt+Win"
+    "Когортный анализ"
 )
 
-@st.cache_data
-def load_data():
-    return pd.read_excel("data_preparation/data/clean/clean_data.xlsx")
-
-df = load_data()
+df = load_clean_data()
 
 st.markdown("## Когортный анализ выкупа")
 
