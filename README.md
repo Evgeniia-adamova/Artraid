@@ -12,21 +12,26 @@
 <ol>
   <li><strong>data_preparation/data_preparation.py</strong> - загрузка сырых данных, приведение типов, удаление дублей и незавершённых сделок → <code>data/clean/clean_data.xlsx</code></li>
   <li><strong>data_preparation/feature_engineering.py</strong> - инженерия признаков: флаги, парсинг тегов и состава заказа, временны́е фичи, интервалы, группы доставки и цены → обновляет <code>data/clean/clean_data.xlsx</code></li>
-  <li><strong>ML/logreg+RF.py</strong> - обучение Logistic Regression и Random Forest, сохранение моделей и метрик, графики важности признаков</li>
-  <li><strong>ML/ML_models.ipynb</strong> - XGBoost, CatBoost, нейросеть, EDA, когортный анализ</li>
+  <li><strong>data_preparation/feature_region.py</strong> - определение региона РФ по городу (OSM + Natasha) → добавляет <code>lead_region</code> в <code>data/clean/clean_data.xlsx</code></li>
+  <li><strong>Cohort/cohort_buyout_analysis.py</strong> - когортный анализ выкупа, графики → <code>Cohort/outputs/charts/</code></li>
+  <li><strong>fin/buyout_loss_analysis.py</strong> - анализ финансовых потерь, графики → <code>fin/loss_analysis_charts/</code></li>
+  <li><strong>ML/</strong> - обучение моделей (LogReg, RF, XGBoost, CatBoost) → <code>ML/Models/</code>, <code>ML/Models_mk2/</code></li>
 </ol>
 
 <h2>Как запустить</h2>
 
-```bash
-# 1. Подготовка данных
-cd data_preparation
-python data_preparation.py
-python feature_engineering.py
+<h3>Обновление данных и графиков (одна команда)</h3>
 
-# 2. Baseline-модели (LogReg + RF)
-cd ../ML
-python logreg+RF.py
+```bash
+python update_data.py
+```
+
+Скрипт последовательно запускает подготовку данных, feature engineering, регионы, когортный анализ и финансовые потери. После завершения обновите страницу Streamlit (клавиша <code>R</code>).
+
+<h3>Запуск дашборда</h3>
+
+```bash
+streamlit run app.py
 ```
 
 <h2>Состав команды CAW</h2>
