@@ -16,7 +16,7 @@ from datetime import datetime
 
 import xgboost as xgb
 import catboost as cb
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
@@ -90,13 +90,21 @@ def datetime2EpSec(df):
         DAT[col] = (DAT[col] - pd.Timestamp('1970-01-01')) // pd.Timedelta('1s')
     return DAT
 
-def CategoricalOrdinal(DATA):
-    DAT = DATA.copy()
-    for col in DAT.select_dtypes(['object']).columns.tolist():
-        unique = pd.unique(DAT[col]).tolist()
-        mapping = {v: i for i, v in enumerate(unique)}
-        DAT[col] = DAT[col].map(mapping)
-    return DAT
+def target_encode(X_train_df, X_test_df, y_train_s, cat_cols, n_splits=5, seed=42):
+    X_tr = X_train_df.copy().reset_index(drop=True)
+    X_te = X_test_df.copy().reset_index(drop=True)
+    y_tr = pd.Series(y_train_s).reset_index(drop=True).astype(float)
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    for col in [c for c in cat_cols if c in X_tr.columns]:
+        global_mean = float(y_tr.mean())
+        oof = np.full(len(X_tr), global_mean)
+        for fold_tr_idx, fold_val_idx in kf.split(X_tr):
+            fold_map = y_tr.iloc[fold_tr_idx].groupby(X_tr[col].iloc[fold_tr_idx]).mean()
+            oof[fold_val_idx] = X_tr[col].iloc[fold_val_idx].map(fold_map).fillna(global_mean).values
+        full_map = y_tr.groupby(X_tr[col]).mean()
+        X_te[col] = X_te[col].map(full_map).fillna(global_mean).values
+        X_tr[col] = oof
+    return X_tr, X_te
 
 
 # загрузка и подготовка данных
@@ -104,7 +112,33 @@ def CategoricalOrdinal(DATA):
 print('Загрузка данных...')
 CLEAN_DATA = pd.read_excel(clean_data_file)
 
-drop1 = ['lead_tags', 'contact_Город', 'contact_id', 'lead_id', 'lead_Состав заказа', 'lead_yclid', 'lead_responsible_user_id']
+CLEAN_DATA = CLEAN_DATA.sort_values('sale_ts').reset_index(drop=True)
+CLEAN_DATA['_buyout_price'] = CLEAN_DATA['lead_price'] * (CLEAN_DATA['buyout_flag'] == True)
+CLEAN_DATA['ltv_before'] = (
+    CLEAN_DATA.groupby('contact_id')['_buyout_price']
+    .transform(lambda x: x.shift(1).cumsum().fillna(0))
+)
+CLEAN_DATA['orders_before'] = (
+    CLEAN_DATA.groupby('contact_id')['lead_price']
+    .transform(lambda x: (~x.isna()).cumsum().shift(1).fillna(0))
+)
+_buyouts = CLEAN_DATA['buyout_flag'].astype(float)
+CLEAN_DATA['buyouts_before'] = (
+    CLEAN_DATA.groupby('contact_id')[_buyouts.name]
+    .transform(lambda x: x.shift(1).cumsum().fillna(0))
+)
+CLEAN_DATA['buyout_rate_before'] = np.where(
+    CLEAN_DATA['orders_before'] > 0,
+    CLEAN_DATA['buyouts_before'] / CLEAN_DATA['orders_before'],
+    -1.0
+)
+CLEAN_DATA['mgr_orders_before'] = (
+    CLEAN_DATA.groupby('lead_responsible_user_id')['lead_price']
+    .transform(lambda x: (~x.isna()).cumsum().shift(1).fillna(0))
+)
+CLEAN_DATA.drop(columns=['_buyout_price', 'buyouts_before'], inplace=True)
+
+drop1 = ['lead_tags', 'contact_Город', 'contact_id', 'lead_id', 'lead_Состав заказа', 'lead_yclid']
 drop2 = [
     'sale_date', 'closed_ts', 'received_ts', 'rejected_ts', 'returned_ts', 'days_to_outcome',
     'lead_Условный отказ', 'lead_Оплата МОП', 'is_paid_mop',
@@ -126,27 +160,39 @@ gc.collect()
 
 DATA = bool2flag(DATA)
 DATA = sig3OutlDetector(DATA, ['lead_price'])
-# МК2: останавливаем на моменте передачи в доставку (handed_to_delivery_ts)
-DATA = Nan2Adequate(DATA, last_stage='handed_to_delivery_ts')
+DATA = Nan2Adequate(DATA)
 DATA = datetime2EpSec(DATA)
-DATA = CategoricalOrdinal(DATA)
+
+DATA['sale_quarter'] = ((DATA['sale_month'] - 1) // 3 + 1).astype(int)
 
 num_cols = DATA.select_dtypes('number').columns
 DATA[num_cols] = DATA[num_cols].fillna(DATA[num_cols].median())
 
-Y = DATA['buyout_flag'].values
-X = DATA.drop('buyout_flag', axis=1).values
-features = DATA.drop('buyout_flag', axis=1).columns.tolist()
+Y = DATA['buyout_flag']
+X_df = DATA.drop('buyout_flag', axis=1)
+features = X_df.columns.tolist()
 del DATA
 gc.collect()
 
 seed = 42
 test_size = 0.2
 
-X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=seed, stratify=Y)
+X_df_train, X_df_test, y_train, y_test = train_test_split(X_df, Y, test_size=test_size, random_state=seed, stratify=Y)
 
-n_neg = (y_train == 0).sum()
-n_pos = (y_train == 1).sum()
+CAT_COLS = [c for c in [
+    'lead_region', 'lead_source_category', 'lead_Тариф Доставки',
+    'lead_Квалификация лида', 'lead_Вид оплаты', 'lead_Проблема',
+    'lead_Категория и варианты выбора', 'lead_Служба доставки',
+    'lead_responsible_user_id', 'delivery_group',
+] if c in features]
+X_df_train, X_df_test = target_encode(X_df_train, X_df_test, y_train, CAT_COLS)
+
+X_train = X_df_train.values.astype(float)
+X_test = X_df_test.values.astype(float)
+features = X_df_train.columns.tolist()
+
+n_neg = int((y_train == 0).sum())
+n_pos = int((y_train == 1).sum())
 print(f'Train: {len(X_train)} строк | class 0: {n_neg}, class 1: {n_pos}')
 print(f'Признаки ({len(features)}): {features}\n')
 
@@ -217,6 +263,8 @@ xgb_model = xgb.XGBClassifier(
     scale_pos_weight=scale,
     subsample=0.8,
     colsample_bytree=0.8,
+    min_child_weight=3,
+    gamma=0.1,
     eval_metric='auc',
     early_stopping_rounds=50,
     seed=seed,
@@ -276,15 +324,18 @@ print(f'AUC: {cb_auc:.4f} | F1 macro: {cb_f1:.4f} | Итераций: {cb_model.
 
 FEATURE_GROUPS = {
     'Клиент':    ['lead_Категория и варианты выбора', 'lead_Квалификация лида', 'is_repeat_client',
-                  'is_yur', 'lead_Проблема', 'lead_Вид оплаты', 'lead_region'],
+                  'is_yur', 'lead_Проблема', 'lead_Вид оплаты', 'lead_region',
+                  'ltv_before', 'orders_before', 'buyout_rate_before',
+                  'mgr_orders_before', 'lead_responsible_user_id'],
     'Заказ':     ['lead_price', 'has_discount', 'n_product_categories',
                   'has_маска', 'has_наколенник', 'has_бандаж_шейный', 'has_повязка',
                   'has_напульсник', 'has_обувь', 'has_подушка', 'has_матрас',
                   'has_постельное', 'has_пояс', 'has_аксессуары', 'has_крем', 'has_бады'],
     'Маркетинг': ['has_yclid', 'has_promo', 'lead_source_category'],
     'Логистика': ['lead_Служба доставки', 'lead_Тариф Доставки', 'delivery_group',
-                  'days_sale_to_handed', 'days_handed_to_issued_pvz', 'issued_or_pvz_ts', 'handed_to_delivery_ts'],
-    'Время':     ['sale_hour', 'sale_day_of_week', 'sale_month',
+                  'days_sale_to_handed', 'days_handed_to_issued_pvz',
+                  'issued_or_pvz_ts', 'handed_to_delivery_ts'],
+    'Время':     ['sale_hour', 'sale_day_of_week', 'sale_month', 'sale_quarter',
                   'lead_created_hour', 'lead_created_day_of_week', 'lead_created_month',
                   'days_creation_to_sale'],
 }

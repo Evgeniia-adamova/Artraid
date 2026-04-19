@@ -3,12 +3,11 @@ import pandas as pd
 from datetime import datetime
 
 from ui import setup_page, render_header, render_sidebar
+from ml_utils import predict_mk1, render_results
 
 @st.cache_data
 def load_data():
     return pd.read_excel("data_preparation/data/clean/clean_data.xlsx")
-
-df = load_data()
 
 setup_page("ML Воронка 1")
 render_sidebar()
@@ -20,12 +19,9 @@ render_header(
 
 df = load_data()
 
-# форма
 st.markdown("### Параметры заказа")
 
-# первый блок: клиент
 st.markdown("#### Клиент")
-
 col1, col2 = st.columns(2)
 
 with col1:
@@ -33,12 +29,10 @@ with col1:
         "Источник клиента",
         sorted(df["lead_source_category"].dropna().unique())
     )
-
     lead_quality = st.selectbox(
         "Квалификация лида",
         sorted(df["lead_Квалификация лида"].dropna().unique())
     )
-
     region = st.selectbox(
         "Регион",
         sorted(df["lead_region"].dropna().unique())
@@ -49,9 +43,7 @@ with col2:
     is_company = st.checkbox("Юридическое лицо")
 
 
-# заказ
 st.markdown("#### Заказ")
-
 col3, col4 = st.columns(2)
 
 with col3:
@@ -62,12 +54,10 @@ with col3:
         int(df["lead_price"].median()),
         step=500
     )
-
     category = st.selectbox(
         "Категория заказа",
         sorted(df["lead_Категория и варианты выбора"].dropna().unique())
     )
-
     problem = st.selectbox(
         "Проблема клиента",
         sorted(df["lead_Проблема"].dropna().unique())
@@ -76,20 +66,15 @@ with col3:
 with col4:
     products = st.multiselect(
         "Товары в заказе",
-        [
-            "маска", "наколенник", "бандаж_шейный", "повязка",
-            "напульсник", "обувь", "подушка", "матрас",
-            "постельное", "пояс", "аксессуары", "крем", "бады"
-        ]
+        ["маска", "наколенник", "бандаж_шейный", "повязка",
+         "напульсник", "обувь", "подушка", "матрас",
+         "постельное", "пояс", "аксессуары", "крем", "бады"]
     )
-
     has_promo = st.checkbox("Есть промокод")
     has_discount = st.checkbox("Есть скидка")
 
 
-# --- Блок 3: Логистика
 st.markdown("#### Логистика")
-
 col5, col6 = st.columns(2)
 
 with col5:
@@ -109,18 +94,14 @@ payment_type = st.selectbox(
     sorted(df["lead_Вид оплаты"].dropna().unique())
 )
 
-
 st.divider()
 
-# кнопка
 predict_clicked = st.button("Прогнозировать", use_container_width=True)
 
-# PREPARE INPUT (КОНТРАКТ)
+
 def build_input():
     now = datetime.now()
-
-    data = {
-        # базовые
+    return {
         "lead_price": price,
         "lead_region": region,
         "lead_Служба доставки": delivery_service,
@@ -130,15 +111,11 @@ def build_input():
         "lead_Категория и варианты выбора": category,
         "lead_Проблема": problem,
         "lead_source_category": lead_source,
-
-        # флаги
         "is_repeat_client": int(is_repeat),
         "is_yur": int(is_company),
         "has_promo": int(has_promo),
         "has_discount": int(has_discount),
         "has_yclid": 0,
-
-        # товары → бинарные
         "has_маска": int("маска" in products),
         "has_наколенник": int("наколенник" in products),
         "has_бандаж_шейный": int("бандаж_шейный" in products),
@@ -152,11 +129,7 @@ def build_input():
         "has_аксессуары": int("аксессуары" in products),
         "has_крем": int("крем" in products),
         "has_бады": int("бады" in products),
-
-        # агрегаты
         "n_product_categories": len(products),
-
-        # время
         "sale_hour": now.hour,
         "sale_day_of_week": now.weekday(),
         "sale_month": now.month,
@@ -166,27 +139,9 @@ def build_input():
         "days_creation_to_sale": 0,
     }
 
-    return data
 
-# результат (заглушка)
 if predict_clicked:
-
     input_data = build_input()
-
-    # result = predict(input_data)
-
-    st.markdown("### Результаты моделей")
-
-    mock = pd.DataFrame({
-        "Модель": ["LogReg", "RF", "XGB", "CatBoost"],
-        "Вероятность": ["72%", "69%", "71%", "75%"],
-        "Вердикт": ["Средний риск"] * 4
-    })
-
-    st.table(mock)
-
-    st.markdown("### Итог")
-
-    st.metric("Средняя вероятность", "71.8%")
-    st.progress(0.718)
-    st.warning("Есть риск невыкупа")
+    with st.spinner("Считаем..."):
+        probs = predict_mk1(input_data)
+    render_results(probs)
