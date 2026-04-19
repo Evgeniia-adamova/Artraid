@@ -51,7 +51,7 @@ id_cols:
 # Сырьё для FE (используются для создания признаков, в модель не идут)
 fe_source_cols:
   - lead_Оплата МОП          # → is_paid_mop
-  - contact_Город             # → region
+  - contact_Город             # → lead_region
   - contact_Число сделок      # → is_repeat_client
   - returned_ts             # -> интервалы
   - rejected_ts             # -> интервалы
@@ -78,16 +78,15 @@ ml_cols:
   # клиент
   - lead_Категория и варианты выбора
   - lead_Квалификация лида          # также: заказ
-  - contact_LTV
   - is_repeat_client
   - is_yur
+  - is_paid_mop
   - lead_Проблема                   # также: заказ
   - lead_Вид оплаты                 # также: заказ
-  - region                          # также: логистика
+  - lead_region                     # также: логистика
 
   # заказ
   - lead_price
-  - lead_Скидка
   - has_discount
   - has_promo                       # также: маркетинг
   - lead_source_category            # также: маркетинг
@@ -112,12 +111,29 @@ ml_cols:
 
   # менеджер/операции
   - days_sale_to_handed
+  - lead_responsible_user_id
 
   # логистика
   - lead_Служба доставки
   - lead_Тариф Доставки
   - days_handed_to_issued_pvz
   - delivery_group
+
+  # временные фичи
+  - sale_hour
+  - sale_day_of_week
+  - sale_month
+  - lead_created_hour
+  - lead_created_day_of_week
+  - lead_created_month
+  - days_creation_to_sale
+
+  # интервалы исхода (только для анализа, не для прогноза)
+  - days_sale_to_received
+  - days_sale_to_rejected
+  - days_sale_to_returned
+  - days_sale_to_closed
+  - days_received_to_issued
 
 # Финансовый анализ потерь
 finance_cols:
@@ -169,7 +185,7 @@ object_to_int:
 #   - lead_tags           (используется только для создания флага has_promo)
 #   - lead_Оплата МОП     (используется только для создания флага is_paid_mop)
 #   - lead_Состав заказа  (используется для извлечения product_category)
-#   - contact_Город       (используется для создания region)
+#   - contact_Город       (используется для создания lead_region)
 #   - contact_id
 #   - lead_id
 #   - lead_responsible_user_id

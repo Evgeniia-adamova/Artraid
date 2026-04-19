@@ -11,6 +11,25 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from pathlib import Path
+
+DARK     = "#1B1B2F"
+TEXT     = "#3D3D5C"
+GRAY     = "#8E8EA0"
+LIGHT    = "#F0F2F5"
+BG       = "#FFFFFF"
+RED      = "#C0392B"
+GRADIENT = ["#0B2545", "#134074", "#13678A", "#1B9AAA", "#45B7D1", "#73C2D4", "#AED9E0"]
+
+plt.rcParams.update({
+    "figure.facecolor": BG,
+    "axes.facecolor":   BG,
+    "axes.labelcolor":  TEXT,
+    "xtick.color":      TEXT,
+    "ytick.color":      TEXT,
+    "text.color":       TEXT,
+    "axes.edgecolor":   GRAY,
+    "grid.color":       LIGHT,
+})
 from datetime import datetime
 
 import xgboost as xgb
@@ -348,24 +367,23 @@ def drawGroupedImp(imp_series, model_name, save_path):
         vals = imp_series[[c for c in cols if c in imp_series.index]]
         group_imp[group] = vals.sum()
     group_series = pd.Series(group_imp).sort_values()
-    colors = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2']
     _, ax = plt.subplots(figsize=(8, 4))
-    bars = ax.barh(group_series.index, group_series.values, color=colors[:len(group_series)])
+    bars = ax.barh(group_series.index, group_series.values, color=GRADIENT[:len(group_series)])
     ax.set_xlabel('Суммарная важность')
     ax.set_title(f'Важность групп признаков - {model_name}')
     ax.set_xlim(0, group_series.max() * 1.15)
     for bar, val in zip(bars, group_series.values):
         ax.text(val + group_series.max() * 0.01, bar.get_y() + bar.get_height() / 2,
-                f'{val:.4f}', va='center', fontsize=9)
+                f'{val:.4f}', va='center', fontsize=9, color=TEXT)
     plt.tight_layout()
-    plt.savefig(save_path, dpi=150)
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
     print(f'График сохранен: {save_path.name}')
 
 def drawTopFeatures(imp_series, model_name, save_path, top_n=20):
     top = imp_series.sort_values(ascending=True).tail(top_n)
     _, ax = plt.subplots(figsize=(10, 6))
-    ax.barh(range(len(top)), top.values, color='#4e79a7')
+    ax.barh(range(len(top)), top.values, color="#13678A")
     ax.set_yticks(range(len(top)))
     ax.set_yticklabels(top.index, fontsize=8)
     ax.set_xlabel('Важность признака')
@@ -378,11 +396,11 @@ def drawTopFeatures(imp_series, model_name, save_path, top_n=20):
 def drawCoef(model, features, save_path):
     coef = pd.Series(model.coef_[0], index=features)
     coef_sorted = coef.reindex(coef.abs().sort_values(ascending=False).index)
-    colors = ['steelblue' if c > 0 else 'tomato' for c in coef_sorted]
+    colors = ["#13678A" if c > 0 else RED for c in coef_sorted]
     plt.figure(figsize=(10, 6))
     plt.barh(range(len(coef_sorted)), coef_sorted.values, color=colors)
     plt.yticks(range(len(coef_sorted)), coef_sorted.index, fontsize=8)
-    plt.axvline(0, color='black', linewidth=0.8)
+    plt.axvline(0, color=GRAY, linewidth=0.8)
     plt.xlabel('Коэффициент (синий = + к выкупу, красный = - к выкупу)')
     plt.title('Feature Coefficients - LogReg-MK1')
     plt.tight_layout()
@@ -397,15 +415,14 @@ def drawGroupedCoef(model, features, save_path):
         vals = coef[[c for c in cols if c in coef.index]]
         group_imp[group] = vals.sum()
     group_series = pd.Series(group_imp).sort_values()
-    colors = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2']
     _, ax = plt.subplots(figsize=(8, 4))
-    bars = ax.barh(group_series.index, group_series.values, color=colors[:len(group_series)])
+    bars = ax.barh(group_series.index, group_series.values, color=GRADIENT[:len(group_series)])
     ax.set_xlabel('Суммарный |коэффициент|')
     ax.set_title('Важность групп признаков - LogReg-MK1')
     ax.set_xlim(0, group_series.max() * 1.15)
     for bar, val in zip(bars, group_series.values):
         ax.text(val + group_series.max() * 0.01, bar.get_y() + bar.get_height() / 2,
-                f'{val:.3f}', va='center', fontsize=9)
+                f'{val:.3f}', va='center', fontsize=9, color=TEXT)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150)
     plt.close()
