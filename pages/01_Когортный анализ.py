@@ -8,7 +8,7 @@ setup_page("Когортный анализ")
 render_sidebar()
 render_header(
     "Artraid Analytics",
-    "Когортный анализ"
+    "Решение команды Ctrl + Alt + Win (CAW!)"
 )
 
 df = load_clean_data()

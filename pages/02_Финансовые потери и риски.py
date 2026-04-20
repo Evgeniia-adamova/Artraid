@@ -10,7 +10,7 @@ setup_page("Финансовые потери и риски")
 render_sidebar()
 render_header(
     "Artraid Analytics",
-    "Финансовые потери и риски"
+    "Решение команды Ctrl + Alt + Win (CAW!)"
 )
 # 0. Загрузка данных
 df = load_clean_data()
